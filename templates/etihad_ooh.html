@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Etihad OOH Proposal Builder — Skyscale Media</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f4f0;color:#1a1a1a;min-height:100vh;font-size:14px}
+.hd{background:#0f0f0f;color:#fff;padding:14px 32px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
+.hd-logo{font-size:17px;font-weight:700;letter-spacing:-0.3px}
+.hd-logo em{color:#a3e635;font-style:normal}
+.hd-sub{font-size:12px;color:#888;margin-left:auto}
+.wrap{max-width:900px;margin:0 auto;padding:36px 20px}
+.page-title{font-size:22px;font-weight:700;margin-bottom:4px}
+.page-sub{font-size:13px;color:#6b7280;margin-bottom:32px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+.card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:24px}
+.card-title{font-size:14px;font-weight:700;margin-bottom:4px}
+.card-desc{font-size:12px;color:#6b7280;margin-bottom:16px}
+.drop{border:2px dashed #d1d5db;border-radius:10px;padding:24px 20px;text-align:center;cursor:pointer;background:#fafafa;transition:all .15s;position:relative}
+.drop:hover,.drop.over{border-color:#0f0f0f;background:#f3f4f6}
+.drop.has-file{border-color:#65a30d;border-style:solid;background:#f7fee7}
+.drop-icon{font-size:24px;margin-bottom:6px;display:block}
+.drop-main{font-size:13px;font-weight:500;color:#374151}
+.drop-hint{font-size:11px;color:#9ca3af;margin-top:3px}
+.drop-name{font-size:12px;font-weight:600;color:#166534;margin-top:8px}
+.badge{position:absolute;top:10px;right:10px;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:6px;text-transform:uppercase}
+.badge-req{background:#fef9c3;color:#854d0e}
+.action-card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.action-info strong{font-size:15px;font-weight:700;display:block;margin-bottom:3px}
+.action-info span{font-size:13px;color:#6b7280}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:11px 28px;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:all .15s}
+.btn-go{background:#1f7a3c;color:#fff}
+.btn-go:hover:not(:disabled){background:#166030}
+.btn-go:disabled{opacity:.6;cursor:wait}
+.msg{padding:10px 14px;border-radius:8px;font-size:13px;margin-top:16px;display:none;white-space:pre-wrap}
+.msg.show{display:block}
+.msg-err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626}
+.msg-ok{background:#dcfce7;border:1px solid #86efac;color:#14532d}
+.msg-warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e}
+.msg-wait{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+.info-box{background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:14px 16px;font-size:12px;color:#075985;margin-bottom:20px;line-height:1.5}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="hd">
+  <div class="hd-logo">Sky<em>scale</em> Media</div>
+  <a href="/" style="color:#bbb;text-decoration:none;font-size:12px">← All tools</a>
+  <div class="hd-sub">Etihad OOH Proposal Builder</div>
+</div>
+<div class="wrap">
+  <div class="page-title">Etihad OOH Proposal Deck</div>
+  <p class="page-sub">Upload the vendor PowerPoint (site photos, maps, GPS &amp; data) and the Etihad-branded template — the server merges them into a client-ready deck.</p>
+
+  <div class="info-box">
+    ℹ️ Works with either an empty 3-slide Etihad template (title + data + divider — the server builds every site slide) or a pre-filled deck that already has "Pictures"/"Map" placeholders (the server only drops in the images). Mode is detected automatically.
+  </div>
+
+  <div class="grid">
+    <!-- Vendor upload -->
+    <div class="card">
+      <div class="card-title">Vendor PPT</div>
+      <div class="card-desc">Supplier deck with one slide per site — photos, map screenshot, GPS link, and site details.</div>
+      <div class="drop" id="vendorDrop" onclick="document.getElementById('vendorIn').click()"
+           ondragover="onDrag(event,'vendorDrop',true)" ondragleave="onDrag(event,'vendorDrop',false)" ondrop="onDropVendor(event)">
+        <span class="badge badge-req">Required</span>
+        <span class="drop-icon">🏙️</span>
+        <div class="drop-main">Click or drag &amp; drop</div>
+        <div class="drop-hint">.pptx</div>
+        <div class="drop-name" id="vendorName"></div>
+      </div>
+      <input type="file" id="vendorIn" accept=".pptx" style="display:none" onchange="onVendorIn(event)">
+    </div>
+
+    <!-- Template upload -->
+    <div class="card">
+      <div class="card-title">Etihad template</div>
+      <div class="card-desc">The Etihad-branded deck — blank template or pre-filled "nuclear" version.</div>
+      <div class="drop" id="tplDrop" onclick="document.getElementById('tplIn').click()"
+           ondragover="onDrag(event,'tplDrop',true)" ondragleave="onDrag(event,'tplDrop',false)" ondrop="onDropTpl(event)">
+        <span class="badge badge-req">Required</span>
+        <span class="drop-icon">✈️</span>
+        <div class="drop-main">Click or drag &amp; drop</div>
+        <div class="drop-hint">.pptx</div>
+        <div class="drop-name" id="tplName"></div>
+      </div>
+      <input type="file" id="tplIn" accept=".pptx" style="display:none" onchange="onTplIn(event)">
+    </div>
+  </div>
+
+  <!-- Submit -->
+  <div class="action-card">
+    <div class="action-info">
+      <strong>Build &amp; download</strong>
+      <span id="readyLabel">Upload both files to continue</span>
+    </div>
+    <button class="btn btn-go" id="btnGo" disabled onclick="submit()">⬇ Build proposal deck</button>
+  </div>
+  <div class="msg msg-wait" id="msgWait">⏳ Processing on server — extracting images, filling slides, cleaning metadata…</div>
+  <div class="msg msg-ok"   id="msgOk"></div>
+  <div class="msg msg-warn" id="msgWarn"></div>
+  <div class="msg msg-err"  id="msgErr"></div>
+</div>
+
+<script>
+let vendorFile = null;
+let tplFile = null;
+
+function onVendorIn(e) { if (e.target.files[0]) setVendor(e.target.files[0]); e.target.value=''; }
+function onDropVendor(e) { e.preventDefault(); document.getElementById('vendorDrop').classList.remove('over'); if (e.dataTransfer.files[0]) setVendor(e.dataTransfer.files[0]); }
+function setVendor(f) {
+  vendorFile = f;
+  document.getElementById('vendorDrop').classList.add('has-file');
+  document.getElementById('vendorName').textContent = '✓ ' + f.name;
+  updateReady();
+}
+
+function onTplIn(e) { if (e.target.files[0]) setTpl(e.target.files[0]); e.target.value=''; }
+function onDropTpl(e) { e.preventDefault(); document.getElementById('tplDrop').classList.remove('over'); if (e.dataTransfer.files[0]) setTpl(e.dataTransfer.files[0]); }
+function setTpl(f) {
+  tplFile = f;
+  document.getElementById('tplDrop').classList.add('has-file');
+  document.getElementById('tplName').textContent = '✓ ' + f.name;
+  updateReady();
+}
+
+function updateReady() {
+  const ok = vendorFile && tplFile;
+  document.getElementById('btnGo').disabled = !ok;
+  document.getElementById('readyLabel').textContent =
+    !vendorFile ? 'Upload the vendor PPT to continue' :
+    !tplFile    ? 'Upload the Etihad template to continue' :
+    'Both files ready';
+}
+
+async function submit() {
+  hideMessages();
+  const btn = document.getElementById('btnGo');
+  btn.disabled = true;
+  btn.textContent = '⏳ Building…';
+  show('msgWait');
+
+  const fd = new FormData();
+  fd.append('vendor', vendorFile);
+  fd.append('template', tplFile);
+
+  try {
+    const res = await fetch('/build-etihad-proposal', { method: 'POST', body: fd });
+    if (!res.ok) {
+      const txt = await res.text();
+      showErr(txt || `Server error ${res.status}`);
+      return;
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('content-disposition') || '';
+    const m = cd.match(/filename="?([^";]+)"?/);
+    const fname = m ? m[1] : 'Etihad_OOH_Proposal.pptx';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    hide('msgWait');
+
+    const mode = res.headers.get('x-build-mode') || '';
+    const sites = res.headers.get('x-build-sites') || '';
+    const modeLabel = mode === 'A' ? 'full build from template' : mode === 'B' ? 'images inserted into pre-filled deck' : '';
+    show('msgOk', `✅ Downloaded: ${fname}` + (sites ? ` — ${sites} site(s), ${modeLabel}` : ''));
+
+    const warnings = res.headers.get('x-build-warnings');
+    if (warnings) show('msgWarn', '⚠ ' + warnings);
+  } catch (err) {
+    showErr('Network error: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⬇ Build proposal deck';
+  }
+}
+
+function show(id, text) {
+  const el = document.getElementById(id);
+  if (text) el.textContent = text;
+  el.classList.add('show');
+}
+function hide(id) { document.getElementById(id).classList.remove('show'); }
+function hideMessages() { ['msgWait','msgErr','msgOk','msgWarn'].forEach(hide); }
+function showErr(msg) { hide('msgWait'); show('msgErr', '✗ ' + msg); }
+
+function onDrag(e, id, over) {
+  e.preventDefault();
+  document.getElementById(id).classList.toggle('over', over);
+}
+</script>
+</body>
+</html>

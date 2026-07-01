@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OOH Proposal Generator — Skyscale</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --brand:  #1a1a2e;
+      --accent: #e94560;
+      --green:  #10b981;
+      --light:  #f4f6fb;
+      --border: #e0e4ed;
+      --muted:  #6b7280;
+      --radius: 12px;
+      --shadow: 0 2px 16px rgba(0,0,0,.07);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--light);
+      color: #111827;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem 5rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    .logo {
+      font-size: 2.2rem;
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1;
+      margin-bottom: .5rem;
+    }
+    .logo .sky   { color: var(--brand); }
+    .logo .scale { color: var(--accent); }
+    header p {
+      color: var(--muted);
+      margin-top: .3rem;
+      font-size: .8rem;
+      font-weight: 600;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 2rem;
+      width: 100%;
+      max-width: 560px;
+    }
+
+    /* ── Upload view ── */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 1.8rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: #fff5f6;
+    }
+    .drop-zone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-zone .icon { font-size: 2rem; }
+    .drop-zone .label {
+      font-size: .85rem;
+      color: var(--muted);
+      margin-top: .5rem;
+    }
+    .drop-zone .filename {
+      margin-top: .4rem;
+      font-size: .85rem;
+      font-weight: 600;
+      color: var(--brand);
+      word-break: break-all;
+    }
+
+    .field-label {
+      font-size: .8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--muted);
+      margin-bottom: .5rem;
+    }
+
+    .fields { display: flex; flex-direction: column; gap: 1.2rem; margin-bottom: 1.8rem; }
+
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: .5rem;
+      width: 100%; padding: .85rem 1.5rem;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 8px;
+      font-size: 1rem; font-weight: 600;
+      cursor: pointer; transition: opacity .2s, background .2s;
+    }
+    .btn:hover { opacity: .9; }
+    .btn:disabled { background: #ccc; cursor: not-allowed; }
+
+    /* ── Progress view ── */
+    #view-progress { display: none; }
+    #view-progress .phase-label {
+      font-size: .85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      margin-bottom: 1.2rem;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .progress-track {
+      height: 8px;
+      background: var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-bottom: 1rem;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 99px;
+      transition: width .4s ease;
+      width: 0%;
+    }
+    .progress-msg {
+      font-size: .9rem;
+      color: var(--muted);
+      min-height: 1.3em;
+    }
+
+    /* ── Done view ── */
+    #view-done { display: none; }
+    .done-icon { font-size: 3rem; text-align: center; margin-bottom: .8rem; }
+    .done-title { font-size: 1.25rem; font-weight: 700; text-align: center; color: var(--brand); margin-bottom: .4rem; }
+    .done-sub   { text-align: center; color: var(--muted); font-size: .9rem; margin-bottom: 1.6rem; }
+
+    .btn-download {
+      display: flex; align-items: center; justify-content: center; gap: .5rem;
+      width: 100%; padding: .85rem 1.5rem;
+      background: var(--green); color: #fff;
+      border: none; border-radius: 8px;
+      font-size: 1rem; font-weight: 600;
+      cursor: pointer; text-decoration: none;
+      transition: opacity .2s;
+    }
+    .btn-download:hover { opacity: .9; }
+
+    .btn-again {
+      display: block; text-align: center;
+      margin-top: 1rem;
+      font-size: .9rem; color: var(--muted);
+      cursor: pointer; text-decoration: underline;
+      background: none; border: none;
+    }
+    .btn-again:hover { color: var(--brand); }
+
+    /* ── Error ── */
+    .error-box {
+      background: #fff5f6;
+      border: 1px solid #fca5a5;
+      border-radius: 8px;
+      padding: .9rem 1rem;
+      font-size: .9rem;
+      color: #b91c1c;
+      margin-top: 1rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="sky">Sky</span><span class="scale">scale</span></div>
+  <p>OOH Proposal Generator</p>
+  <p style="text-transform:none;letter-spacing:normal;font-weight:400;margin-top:.6rem">
+    <a href="/etihad-ooh" style="color:var(--accent);text-decoration:none">Etihad OOH Builder</a>
+    &nbsp;·&nbsp;
+    <a href="/print-plan" style="color:var(--accent);text-decoration:none">CN Print Plan Filler</a>
+  </p>
+</header>
+
+<!-- ── Upload ── -->
+<div class="card" id="view-upload">
+  <div class="fields">
+    <div>
+      <div class="field-label">Excel file (site data)</div>
+      <div class="drop-zone" id="zone-excel">
+        <input type="file" accept=".xlsx,.xls" id="input-excel" />
+        <div class="icon">📊</div>
+        <div class="label">Drag &amp; drop or click to select</div>
+        <div class="filename" id="name-excel"></div>
+      </div>
+    </div>
+    <div>
+      <div class="field-label">PowerPoint template</div>
+      <div class="drop-zone" id="zone-pptx">
+        <input type="file" accept=".pptx" id="input-pptx" />
+        <div class="icon">📐</div>
+        <div class="label">Drag &amp; drop or click to select</div>
+        <div class="filename" id="name-pptx"></div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn" id="btn-generate" disabled>
+    ⚡ Generate Proposal
+  </button>
+  <div class="error-box" id="upload-error"></div>
+</div>
+
+<!-- ── Progress ── -->
+<div class="card" id="view-progress">
+  <div class="phase-label" id="phase-label">
+    <span class="spinner"></span>
+    <span id="phase-text">Preparing…</span>
+  </div>
+  <div class="progress-track">
+    <div class="progress-fill" id="progress-fill"></div>
+  </div>
+  <div class="progress-msg" id="progress-msg">Starting…</div>
+  <div class="error-box" id="build-error"></div>
+</div>
+
+<!-- ── Done ── -->
+<div class="card" id="view-done">
+  <div class="done-icon">✅</div>
+  <div class="done-title">Proposal Ready!</div>
+  <div class="done-sub" id="done-sub">Your PPTX file with Google Maps screenshots is ready.</div>
+  <a class="btn-download" id="btn-download" href="#">
+    ⬇ Download PPTX
+  </a>
+  <button class="btn-again" id="btn-again">Generate another proposal</button>
+</div>
+
+<script>
+  // ── State ──
+  let jobId = null;
+  let pollTimer = null;
+  let netErrors = 0;
+  const MAX_NET_ERRORS = 12; // keep retrying for ~36s of connection issues
+
+  // ── Helpers ──
+  function show(id) {
+    ['view-upload', 'view-progress', 'view-done'].forEach(v => {
+      document.getElementById(v).style.display = v === id ? 'block' : 'none';
+    });
+  }
+
+  function setProgress(pct, msg) {
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-msg').textContent = msg;
+  }
+
+  function setPhase(text) {
+    document.getElementById('phase-text').textContent = text;
+  }
+
+  function showError(boxId, msg) {
+    const el = document.getElementById(boxId);
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  // ── File drop zones ──
+  function wireDropZone(zoneId, inputId, nameId) {
+    const zone  = document.getElementById(zoneId);
+    const input = document.getElementById(inputId);
+    const name  = document.getElementById(nameId);
+
+    zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      const f = e.dataTransfer.files[0];
+      if (f) { input.files = e.dataTransfer.files; name.textContent = f.name; checkReady(); }
+    });
+    input.addEventListener('change', () => {
+      if (input.files[0]) { name.textContent = input.files[0].name; checkReady(); }
+    });
+  }
+
+  wireDropZone('zone-excel', 'input-excel', 'name-excel');
+  wireDropZone('zone-pptx',  'input-pptx',  'name-pptx');
+
+  function checkReady() {
+    const excelOk = !!document.getElementById('input-excel').files[0];
+    const pptxOk  = !!document.getElementById('input-pptx').files[0];
+    document.getElementById('btn-generate').disabled = !(excelOk && pptxOk);
+  }
+
+  // ── Generate ──
+  document.getElementById('btn-generate').addEventListener('click', async () => {
+    const excel = document.getElementById('input-excel').files[0];
+    const pptx  = document.getElementById('input-pptx').files[0];
+    if (!excel || !pptx) return;
+
+    document.getElementById('upload-error').style.display = 'none';
+    document.getElementById('btn-generate').disabled = true;
+
+    const form = new FormData();
+    form.append('excel',    excel);
+    form.append('template', pptx);
+
+    show('view-progress');
+    setPhase('Researching sites…');
+    setProgress(0, 'Uploading files…');
+
+    try {
+      const res  = await fetch('/api/plan', { method: 'POST', body: form });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      jobId = data.job_id;
+      pollPlan();
+    } catch (err) {
+      show('view-upload');
+      document.getElementById('btn-generate').disabled = false;
+      showError('upload-error', 'Upload failed: ' + err.message);
+    }
+  });
+
+  // ── Poll plan phase ──
+  function pollPlan() {
+    clearTimeout(pollTimer);
+    pollTimer = setTimeout(async () => {
+      try {
+        const res  = await fetch('/api/status/' + jobId);
+        const data = await res.json();
+        netErrors = 0;
+
+        if (data.status === 'planning') {
+          setPhase('Researching sites & fetching maps…');
+          setProgress(Math.min(data.progress, 50), data.message);
+          pollPlan();
+
+        } else if (data.status === 'plan_ready') {
+          setPhase('Building PPTX…');
+          setProgress(52, 'Starting build…');
+          await startBuild(data.plan);
+
+        } else if (data.status === 'error') {
+          showError('build-error', data.message);
+
+        } else {
+          pollPlan();
+        }
+      } catch (_) {
+        netErrors++;
+        if (netErrors < MAX_NET_ERRORS) {
+          document.getElementById('progress-msg').textContent = 'Reconnecting… (' + netErrors + ')';
+          pollPlan();
+        } else {
+          showError('build-error', 'Lost connection to server. Please refresh and try again.');
+        }
+      }
+    }, netErrors > 0 ? 3000 : 1500);
+  }
+
+  // ── Trigger build ──
+  async function startBuild(plan) {
+    try {
+      const res  = await fetch('/api/build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: jobId, plan }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      pollBuild();
+    } catch (err) {
+      showError('build-error', 'Build failed: ' + err.message);
+    }
+  }
+
+  // ── Poll build phase ──
+  function pollBuild() {
+    clearTimeout(pollTimer);
+    pollTimer = setTimeout(async () => {
+      try {
+        const res  = await fetch('/api/status/' + jobId);
+        const data = await res.json();
+        netErrors = 0;
+
+        if (data.status === 'building') {
+          const pct = 52 + Math.round((data.progress / 100) * 46);
+          setProgress(pct, data.message);
+          pollBuild();
+
+        } else if (data.status === 'done') {
+          setProgress(100, 'Complete!');
+          setTimeout(() => showDone(data.output), 400);
+
+        } else if (data.status === 'error') {
+          showError('build-error', data.message);
+
+        } else {
+          pollBuild();
+        }
+      } catch (_) {
+        netErrors++;
+        if (netErrors < MAX_NET_ERRORS) {
+          document.getElementById('progress-msg').textContent = 'Reconnecting… (' + netErrors + ')';
+          pollBuild();
+        } else {
+          showError('build-error', 'Lost connection to server. Please refresh and try again.');
+        }
+      }
+    }, netErrors > 0 ? 3000 : 1500);
+  }
+
+  // ── Done ──
+  function showDone(outputFilename) {
+    show('view-done');
+    document.getElementById('btn-download').href = '/api/download/' + jobId;
+  }
+
+  // ── Start over ──
+  document.getElementById('btn-again').addEventListener('click', () => {
+    jobId = null;
+    clearTimeout(pollTimer);
+    document.getElementById('input-excel').value = '';
+    document.getElementById('input-pptx').value  = '';
+    document.getElementById('name-excel').textContent = '';
+    document.getElementById('name-pptx').textContent  = '';
+    document.getElementById('btn-generate').disabled = true;
+    document.getElementById('upload-error').style.display = 'none';
+    document.getElementById('build-error').style.display  = 'none';
+    setProgress(0, '');
+    show('view-upload');
+  });
+
+  // Init
+  show('view-upload');
+</script>
+</body>
+</html>

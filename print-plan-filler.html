@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Condé Nast Print Plan Filler — Skyscale Media</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f4f0;color:#1a1a1a;min-height:100vh;font-size:14px}
+.hd{background:#0f0f0f;color:#fff;padding:14px 32px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
+.hd-logo{font-size:17px;font-weight:700;letter-spacing:-0.3px}
+.hd-logo em{color:#a3e635;font-style:normal}
+.hd-sub{font-size:12px;color:#666;margin-left:auto}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 20px}
+.page-title{font-size:22px;font-weight:700;margin-bottom:4px;letter-spacing:-0.4px}
+.page-sub{font-size:13px;color:#6b7280;margin-bottom:28px}
+.upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:22px;margin-bottom:20px}
+.card-hidden{display:none}
+.card-title{font-size:14px;font-weight:700;margin-bottom:3px}
+.card-desc{font-size:12px;color:#6b7280;margin-bottom:16px}
+.drop{border:2px dashed #d1d5db;border-radius:10px;padding:22px 20px;text-align:center;cursor:pointer;transition:all 0.15s;background:#fafafa;position:relative;user-select:none}
+.drop:hover,.drop.over{border-color:#0f0f0f;background:#f3f4f6}
+.drop.has-files{border-color:#65a30d;border-style:solid;background:#f7fee7}
+.drop.loading{border-color:#6366f1;border-style:solid;background:#eef2ff;cursor:wait}
+.drop.err{border-color:#dc2626;border-style:solid;background:#fef2f2}
+.drop-icon{font-size:22px;margin-bottom:6px;display:block}
+.drop-main{font-size:13px;color:#374151;font-weight:500}
+.drop-hint{font-size:11px;color:#9ca3af;margin-top:3px}
+.drop-badge{position:absolute;top:10px;right:10px;font-size:10px;font-weight:700;letter-spacing:0.5px;padding:3px 8px;border-radius:6px;text-transform:uppercase}
+.badge-req{background:#fef9c3;color:#854d0e}
+.badge-opt{background:#f3f4f6;color:#6b7280}
+.file-list{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+.file-item{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e5e5e5;border-radius:9px;padding:9px 12px}
+.file-item.processing{border-color:#6366f1;background:#eef2ff}
+.file-item.error{border-color:#dc2626;background:#fef2f2}
+.fi-icon{font-size:16px;flex-shrink:0}
+.fi-body{flex:1;min-width:0}
+.fi-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fi-stat{font-size:10px;color:#6b7280;margin-top:2px}
+.fi-stat.ok{color:#166534}.fi-stat.err{color:#dc2626}
+.fi-market{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.fi-market label{font-size:10px;font-weight:600;color:#92400e;white-space:nowrap}
+.fi-market input{border:1px solid #fde68a;background:#fffbeb;border-radius:5px;padding:4px 7px;font-size:11px;width:80px}
+.fi-market input:focus{outline:none;border-color:#f59e0b}
+.fi-remove{background:none;border:none;cursor:pointer;color:#9ca3af;font-size:14px;padding:2px 5px;border-radius:4px;flex-shrink:0;line-height:1}
+.fi-remove:hover{background:#fee2e2;color:#dc2626}
+.chip-row{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 4px}
+.chip{font-size:10px;font-weight:600;padding:3px 8px;border-radius:5px;white-space:nowrap}
+.chip-ok{background:#dcfce7;color:#166534}
+.chip-miss{background:#fee2e2;color:#991b1b}
+.det-label{font-size:11px;color:#6b7280;margin-bottom:5px}
+.src-list{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.src-item{background:#f9fafb;border:1px solid #f0f0f0;border-radius:7px;padding:8px 12px}
+.src-name{font-size:11px;font-weight:600;color:#374151;margin-bottom:4px}
+.hdr-chips{display:flex;flex-wrap:wrap;gap:3px}
+.hdr-chip{font-size:10px;padding:2px 6px;border-radius:4px;background:#f3f4f6;color:#374151}
+.hdr-chip.matched{background:#dcfce7;color:#166534;font-weight:600}
+.alert{padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:12px;display:none}
+.alert.show{display:block}
+.alert-warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e}
+.alert-info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+.prev-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.stat{font-size:11px;color:#6b7280;margin-top:3px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all 0.15s}
+.btn-xlsx{background:#1f7a3c;color:#fff}
+.btn-xlsx:hover{background:#166030}
+.btn-csv{background:#374151;color:#fff}
+.btn-csv:hover{background:#1f2937}
+.btn-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.tbl-wrap{overflow-x:auto;border:1px solid #bdbdbd;border-radius:3px}
+table.cn{width:100%;border-collapse:collapse;font-size:12px;min-width:780px;font-family:'Segoe UI',Arial,sans-serif}
+table.cn th{background:#1f4e79;color:#fff;padding:9px 10px;text-align:left;font-weight:700;white-space:nowrap;font-size:11px;border:1px solid #1a3d5e}
+table.cn td{padding:6px 10px;border:1px solid #d6d6d6;vertical-align:middle;white-space:nowrap;overflow:hidden;max-width:200px;text-overflow:ellipsis}
+table.cn tr:nth-child(even) td{background:#f5f8fc}
+table.cn tr:hover td{background:#e8f0fe}
+td.v-market{background:#1f4e79 !important;color:#fff;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;text-align:center}
+td.v-media{background:#d6e4f0 !important;font-weight:600;color:#1f4e79}
+td.v-total{font-weight:700;color:#1f4e79;text-align:right}
+td.v-num{text-align:right;color:#374151}
+td.v-empty{color:#c8c8c8}
+tr.file-sep td{background:#f0f4f8 !important;font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;padding:4px 10px;border-top:2px solid #d0dae5}
+@media(max-width:640px){.upload-grid{grid-template-columns:1fr}.hd-sub{display:none}.wrap{padding:16px 14px}}
+</style>
+</head>
+<body>
+<div class="hd">
+  <div class="hd-logo">Sky<em>scale</em> Media</div>
+  <div class="hd-sub">Condé Nast Print Plan Filler</div>
+</div>
+<div class="wrap">
+  <div class="page-title">Condé Nast Print Plan</div>
+  <p class="page-sub">Upload the blank CN template and vendor rate cards — download the filled template as Excel.</p>
+
+  <div class="upload-grid">
+    <div class="card">
+      <div class="card-title">Blank CN template</div>
+      <div class="card-desc">Upload the empty template to download a properly filled <strong>.xlsx</strong> with formatting preserved.</div>
+      <div class="drop" id="tplDrop" onclick="document.getElementById('tplIn').click()"
+           ondragover="onDragOver(event,'tplDrop')" ondragleave="onDragLeave('tplDrop')" ondrop="onDropTpl(event)">
+        <span class="drop-badge badge-opt">Optional</span>
+        <span class="drop-icon">📋</span>
+        <div class="drop-main">Click to upload or drag &amp; drop</div>
+        <div class="drop-hint">.xlsx &nbsp;/&nbsp; .csv</div>
+        <div class="drop-fname" id="tplName"></div>
+      </div>
+      <input type="file" id="tplIn" accept=".csv,.xlsx,.xls" style="display:none" onchange="onTplInput(event)">
+    </div>
+
+    <div class="card">
+      <div class="card-title">Vendor rate cards</div>
+      <div class="card-desc">Add one or more vendor files. Each gets its own market label. All rows combine.</div>
+      <div class="drop" id="datDrop" onclick="document.getElementById('datIn').click()"
+           ondragover="onDragOver(event,'datDrop')" ondragleave="onDragLeave('datDrop')" ondrop="onDropDat(event)">
+        <span class="drop-badge badge-req">Required</span>
+        <span class="drop-icon">📊</span>
+        <div class="drop-main">Click to upload or drag &amp; drop</div>
+        <div class="drop-hint">.xlsx / .csv &nbsp;·&nbsp; <strong>multiple files</strong></div>
+      </div>
+      <input type="file" id="datIn" accept=".csv,.xlsx,.xls" multiple style="display:none" onchange="onDatInput(event)">
+      <div class="file-list" id="fileList"></div>
+    </div>
+  </div>
+
+  <div class="card card-hidden" id="prevCard">
+    <div class="prev-hd">
+      <div>
+        <div class="card-title">Ready to download</div>
+        <div class="stat" id="prevStat"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-xlsx" id="btnXlsx" style="display:none" onclick="downloadXLSX()">⬇ Download filled .xlsx</button>
+        <button class="btn btn-csv" onclick="downloadCSV()">⬇ Download CSV</button>
+      </div>
+    </div>
+    <div id="xlsxErr" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:9px 14px;font-size:12px;margin-bottom:10px"></div>
+  </div>
+  <div style="text-align:center;padding:24px;font-size:11px;color:#9ca3af">Skyscale Media · Condé Nast print plan filler</div>
+</div>
+
+<script>
+// ── CN definitions ────────────────────────────────────────────────
+const CN_FIELDS = ['market','media','elements','format','platform','unit_type','kpis','buy_type','net_cpm','net_total'];
+const CN_LABELS = {market:'Market',media:'Media',elements:'Elements',format:'Format',
+  platform:'Platform',unit_type:'Unit Type',kpis:"KPI's",buy_type:'Buy Type',net_cpm:'Net CPM',net_total:'Net Total'};
+const COL_LETTERS = ['A','B','C','D','E','F','G','H','I','J'];
+
+const KEYWORDS = {
+  market:    ["market","country","region","geo","territory","edition"],
+  media:     ["site","publisher","media","outlet","publication","supplied by","supplier",
+               "title","publication title","brand","magazine","advertiser","pub"],
+  elements:  ["package","description","product","elements","brief","placement"],
+  format:    ["placement name","format","ad format","creative","ad size","size"],
+  platform:  ["platform","device","channel"],
+  unit_type: ["unit type","metric","ad type","kpi type","kpi"],
+  kpis:      ["kpi guarantee","est. social impressions","social impressions",
+               "impressions","views","units","quantity","volume"],
+  buy_type:  ["cost method","buy type","pricing method","billing method","revenue type"],
+  net_cpm:   ["net cpm","unit rate","net rate","cpm","rate"],
+  net_total: ["total net gbp","total net usd","net total","total net","total cost",
+               "investment","budget","cost"],
+};
+const HDR_TARGETS = new Set(["site","placement","platform","cost","units","package","format","rate","publisher","media","cpm","revenue"]);
+const PLATFORM_MAP = {instagram:'IG',facebook:'FB',twitter:'X','x (twitter)':'X',linkedin:'LI',youtube:'YT',tiktok:'TT',snapchat:'SC'};
+const MARKET_HINTS = [[/\buk\b/i,'UK'],[/\bus\b|\busa\b/i,'USA'],[/\bindia\b/i,'India'],[/\blatam\b/i,'LATAM'],[/\bitaly\b/i,'Italy'],[/\bfrance\b/i,'France'],[/\bgermany\b/i,'Germany'],[/\bksa\b/i,'KSA'],[/\buae\b/i,'UAE'],[/\bbrazil\b/i,'Brazil']];
+
+// ── State ─────────────────────────────────────────────────────────
+let uploadedFiles = [], nextId = 0, tplBuffer = null;
+
+// ── Helpers ───────────────────────────────────────────────────────
+const norm = v => (v==null?'':String(v)).toLowerCase().trim();
+
+function matchField(h) {
+  const hn=norm(h); if(!hn) return null;
+  for(const[f,ks]of Object.entries(KEYWORDS)) if(ks.includes(hn))return f;
+  for(const[f,ks]of Object.entries(KEYWORDS)) for(const k of ks) if(hn.includes(k))return f;
+  return null;
+}
+function findHeaderRow(rows) {
+  for(let i=0;i<Math.min(rows.length,25);i++){
+    const v=new Set(rows[i].map(x=>norm(x)).filter(Boolean));
+    if([...HDR_TARGETS].filter(t=>v.has(t)).length>=2) return i;
+  }
+  return 0;
+}
+function guessMarket(n){for(const[r,l]of MARKET_HINTS)if(r.test(n))return l;return '';}
+
+// ── CSV / XLSX readers ────────────────────────────────────────────
+function parseCSV(txt){
+  return txt.trim().split(/\r?\n/).map(line=>{
+    const c=[];let q=false,cell='';
+    for(let i=0;i<line.length;i++){const ch=line[i];
+      if(ch==='"'&&!q){q=true;continue;}
+      if(ch==='"'&&q){if(line[i+1]==='"'){cell+='"';i++;}else q=false;continue;}
+      if(ch===','&&!q){c.push(cell.trim());cell='';continue;}
+      cell+=ch;}
+    c.push(cell.trim());return c;
+  });
+}
+async function unzip(buf){
+  const v=new DataView(buf),b=new Uint8Array(buf),files={};
+  let eocd=-1;
+  for(let i=buf.byteLength-22;i>=Math.max(0,buf.byteLength-65558);i--)
+    if(v.getUint32(i,true)===0x06054B50){eocd=i;break;}
+  if(eocd<0)throw new Error('Not a ZIP');
+  const cdOff=v.getUint32(eocd+16,true),cdN=v.getUint16(eocd+10,true);
+  let pos=cdOff;
+  for(let i=0;i<cdN;i++){
+    if(v.getUint32(pos,true)!==0x02014B50)break;
+    const meth=v.getUint16(pos+10,true),csz=v.getUint32(pos+20,true),usz=v.getUint32(pos+24,true),
+          nl=v.getUint16(pos+28,true),el=v.getUint16(pos+30,true),cl=v.getUint16(pos+32,true),lo=v.getUint32(pos+42,true);
+    const name=new TextDecoder().decode(b.subarray(pos+46,pos+46+nl));
+    const lnl=v.getUint16(lo+26,true),lel=v.getUint16(lo+28,true);
+    const comp=b.subarray(lo+30+lnl+lel,lo+30+lnl+lel+csz);
+    if(meth===0){files[name]=comp;}
+    else if(meth===8){
+      try{const ds=new DecompressionStream('deflate-raw');
+        const wr=ds.writable.getWriter(),rd=ds.readable.getReader();
+        wr.write(comp);wr.close();
+        const chunks=[];while(true){const{done,value}=await rd.read();if(done)break;chunks.push(value);}
+        const out=new Uint8Array(usz);let off=0;for(const ch of chunks){out.set(ch,off);off+=ch.length;}
+        files[name]=out;}catch(e){}
+    }
+    pos+=46+nl+el+cl;
+  }
+  return files;
+}
+async function readXLSX(buf){
+  const files=await unzip(buf),dec=new TextDecoder('utf-8'),ss=[];
+  const ssk=Object.keys(files).find(k=>k.toLowerCase().includes('sharedstrings'));
+  if(ssk){const xml=new DOMParser().parseFromString(dec.decode(files[ssk]),'text/xml');
+    for(const si of xml.querySelectorAll('si'))ss.push(si.textContent);}
+  const sk=Object.keys(files).find(k=>/xl\/worksheets\/sheet1\.xml$/i.test(k))
+         ||Object.keys(files).find(k=>/xl\/worksheets\/sheet\d+\.xml$/i.test(k));
+  if(!sk)throw new Error('No worksheet found');
+  const xml=new DOMParser().parseFromString(dec.decode(files[sk]),'text/xml');
+  const ci=ref=>{const m=(ref||'').match(/^([A-Z]+)/i);if(!m)return 0;let n=0;for(const c of m[1].toUpperCase())n=n*26+(c.charCodeAt(0)-64);return n-1;};
+  const rows=[];
+  for(const rowEl of xml.querySelectorAll('row')){
+    const cells=rowEl.querySelectorAll('c');if(!cells.length)continue;
+    let mc=0;for(const c of cells)mc=Math.max(mc,ci(c.getAttribute('r')));
+    const row=new Array(mc+1).fill('');
+    for(const c of cells){
+      const idx=ci(c.getAttribute('r')),t=c.getAttribute('t'),v=c.querySelector('v')?.textContent??'';
+      const it=c.querySelector('is t')?.textContent;
+      if(it!=null){row[idx]=it;continue;}
+      row[idx]=t==='s'?(ss[parseInt(v)]??''):t==='b'?(v==='1'?'TRUE':'FALSE'):v;
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+function readFile(file){
+  return new Promise((res,rej)=>{
+    const ext=file.name.split('.').pop().toLowerCase();
+    if(ext==='csv'){const fr=new FileReader();fr.onload=e=>{try{res(parseCSV(e.target.result));}catch(e){rej(e);}};fr.onerror=()=>rej(new Error('Read error'));fr.readAsText(file);}
+    else if(ext==='xlsx'||ext==='xls'){const fr=new FileReader();fr.onload=async e=>{try{res(await readXLSX(e.target.result));}catch(e){rej(e);}};fr.onerror=()=>rej(new Error('Read error'));fr.readAsArrayBuffer(file);}
+    else rej(new Error('Use .xlsx or .csv'));
+  });
+}
+
+// ── Processing ────────────────────────────────────────────────────
+function processFileRows(rawRows){
+  const hdrIdx=findHeaderRow(rawRows),datHeaders=rawRows[hdrIdx]||[];
+  const datRows=rawRows.slice(hdrIdx+1).filter(r=>r.some(c=>norm(c)));
+  const fieldToCol={},used=new Set();
+  for(const field of CN_FIELDS){let best=-1;
+    for(let i=0;i<datHeaders.length;i++){if(used.has(i))continue;if(matchField(datHeaders[i])===field){best=i;break;}}
+    fieldToCol[field]=best;if(best>=0)used.add(best);}
+  return{hdrIdx,datHeaders,datRows,fieldToCol};
+}
+function buildOutputRows(f){
+  const{datRows,fieldToCol,market}=f;let lastMkt='',sparseRun=0;
+  const acc=[];
+  for(const row of datRows){
+    const r={};
+    for(const field of CN_FIELDS){const col=fieldToCol[field];r[field]=col>=0?(row[col]!=null?String(row[col]).trim():''):''}
+    if(!r.market&&market)r.market=market;
+    if(!r.market)r.market=lastMkt;else lastMkt=r.market;
+    if(r.platform)r.platform=PLATFORM_MAP[r.platform.toLowerCase().trim()]||r.platform;
+    const filled=CN_FIELDS.filter(fld=>fld!=='market'&&r[fld]).length;
+    // Accumulate sparse-row run; stop if 3+ consecutive sparse rows after real data
+    if(filled<3){sparseRun++;if(sparseRun>=3&&acc.length)break;continue;}
+    sparseRun=0;
+    // Skip rows with any very long cell value (rate card "Please Note" disclaimers)
+    if(CN_FIELDS.some(fld=>r[fld]&&r[fld].length>80))continue;
+    acc.push(r);
+  }
+  return acc;
+}
+
+// ── File list UI ──────────────────────────────────────────────────
+function renderFileList(){
+  const list=document.getElementById('fileList');list.innerHTML='';
+  document.getElementById('datDrop').className='drop'+(uploadedFiles.length?' has-files':'');
+  uploadedFiles.forEach(f=>{
+    const div=document.createElement('div');
+    div.className='file-item'+(f.error?' error':f.outputRows.length===0&&!f.error?' processing':'');
+    const matched=CN_FIELDS.filter(field=>f.fieldToCol[field]>=0).length;
+    const stat=f.error?f.error:f.outputRows.length?`${f.outputRows.length} rows · ${matched}/10 fields detected`:'Processing…';
+    div.innerHTML=`<div class="fi-icon">📊</div>
+      <div class="fi-body"><div class="fi-name" title="${f.name}">${f.name}</div>
+        <div class="fi-stat ${f.error?'err':'ok'}">${stat}</div></div>
+      <div class="fi-market"><label>Market:</label>
+        <input type="text" placeholder="e.g. UK" value="${f.market||''}" oninput="setFileMarket(${f.id},this.value)"></div>
+      <button class="fi-remove" onclick="removeFile(${f.id})" title="Remove">✕</button>`;
+    list.appendChild(div);
+  });
+}
+function setFileMarket(id,val){
+  const f=uploadedFiles.find(x=>x.id===id);if(!f)return;
+  f.market=val.trim();f.outputRows=buildOutputRows(f);renderResult();
+}
+function removeFile(id){uploadedFiles=uploadedFiles.filter(f=>f.id!==id);renderFileList();renderResult();}
+
+async function addFiles(files){
+  for(const file of Array.from(files)){
+    const id=nextId++;
+    const entry={id,name:file.name,market:guessMarket(file.name),rawRows:[],hdrIdx:0,datHeaders:[],fieldToCol:{},outputRows:[]};
+    uploadedFiles.push(entry);renderFileList();
+    try{
+      const rows=await readFile(file);
+      if(rows.length<2)throw new Error('File appears empty');
+      entry.rawRows=rows;Object.assign(entry,processFileRows(rows));entry.outputRows=buildOutputRows(entry);
+    }catch(err){entry.error=err.message||'Could not read file';}
+    renderFileList();renderResult();
+  }
+}
+
+// ── Render result ─────────────────────────────────────────────────
+function renderResult(){
+  const valid=uploadedFiles.filter(f=>!f.error&&f.outputRows.length>0);
+  if(!valid.length){document.getElementById('prevCard').classList.add('card-hidden');return;}
+  const total=valid.reduce((s,f)=>s+f.outputRows.length,0);
+  document.getElementById('prevStat').textContent=`${total} rows from ${valid.length} file${valid.length>1?'s':''} ready`;
+  document.getElementById('btnXlsx').style.display=tplBuffer?'':'none';
+  document.getElementById('prevCard').classList.remove('card-hidden');
+}
+
+// ════════════════════════════════════════════════════════════════
+// XLSX WRITER — injects data into the blank template
+// ════════════════════════════════════════════════════════════════
+const CRC_TBL=(()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c;}return t;})();
+function crc32(data){let c=0xFFFFFFFF;for(const b of data)c=CRC_TBL[(c^b)&0xFF]^(c>>>8);return(c^0xFFFFFFFF)>>>0;}
+
+function writeZIP(entries){
+  const enc=new TextEncoder(),lhs=[],cds=[],datas=[];let offset=0;
+  for(const{name,data}of entries){
+    const nb=enc.encode(name),crc=crc32(data),sz=data.length;
+    const lh=new Uint8Array(30+nb.length);const lv=new DataView(lh.buffer);
+    lv.setUint32(0,0x04034B50,true);lv.setUint16(4,20,true);lv.setUint16(6,0,true);lv.setUint16(8,0,true);
+    lv.setUint16(10,0,true);lv.setUint16(12,0,true);lv.setUint32(14,crc,true);
+    lv.setUint32(18,sz,true);lv.setUint32(22,sz,true);lv.setUint16(26,nb.length,true);lv.setUint16(28,0,true);
+    lh.set(nb,30);
+    const cd=new Uint8Array(46+nb.length);const cv=new DataView(cd.buffer);
+    cv.setUint32(0,0x02014B50,true);cv.setUint16(4,20,true);cv.setUint16(6,20,true);
+    cv.setUint16(8,0,true);cv.setUint16(10,0,true);cv.setUint16(12,0,true);cv.setUint16(14,0,true);
+    cv.setUint32(16,crc,true);cv.setUint32(20,sz,true);cv.setUint32(24,sz,true);
+    cv.setUint16(28,nb.length,true);cv.setUint16(30,0,true);cv.setUint16(32,0,true);
+    cv.setUint16(34,0,true);cv.setUint16(36,0,true);cv.setUint32(38,0,true);cv.setUint32(42,offset,true);
+    cd.set(nb,46);
+    offset+=lh.length+sz;lhs.push(lh);datas.push(data);cds.push(cd);
+  }
+  const cdOff=offset,cdSz=cds.reduce((s,c)=>s+c.length,0);
+  const eocd=new Uint8Array(22);const ev=new DataView(eocd.buffer);
+  ev.setUint32(0,0x06054B50,true);ev.setUint16(8,entries.length,true);ev.setUint16(10,entries.length,true);
+  ev.setUint32(12,cdSz,true);ev.setUint32(16,cdOff,true);
+  const out=new Uint8Array(cdOff+cdSz+22);let pos=0;
+  for(let i=0;i<lhs.length;i++){out.set(lhs[i],pos);pos+=lhs[i].length;out.set(datas[i],pos);pos+=datas[i].length;}
+  for(const cd of cds){out.set(cd,pos);pos+=cd.length;}
+  out.set(eocd,pos);return out;
+}
+
+function xmlEsc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+async function generateFilledXLSX(){
+  const enc=new TextEncoder(),dec=new TextDecoder('utf-8');
+  const yield_=()=>new Promise(r=>setTimeout(r,0));
+  const files=await unzip(tplBuffer);
+
+  showXlsxMsg('⏳ Reading template strings…',false);await yield_();
+
+  // ── 1. Shared strings ──
+  const ssk=Object.keys(files).find(k=>k.toLowerCase().includes('sharedstrings'));
+  let ssOrigXml='';
+  const strMap=new Map();
+  let nextSsIdx=0;
+  const newSsEntries=[];
+  if(ssk){
+    ssOrigXml=dec.decode(files[ssk]);
+    const xml=new DOMParser().parseFromString(ssOrigXml,'text/xml');
+    for(const si of xml.querySelectorAll('si')){
+      const t=si.textContent;
+      if(!strMap.has(t))strMap.set(t,nextSsIdx);
+      nextSsIdx++;
+    }
+  }
+  const ssIdx=val=>{
+    if(strMap.has(val))return strMap.get(val);
+    const i=nextSsIdx++;strMap.set(val,i);newSsEntries.push(val);return i;
+  };
+
+  // ── 2. Get worksheet XML ──
+  const sk=Object.keys(files).find(k=>/xl\/worksheets\/sheet1\.xml$/i.test(k))
+         ||Object.keys(files).find(k=>/xl\/worksheets\/sheet\d+\.xml$/i.test(k));
+  if(!sk)throw new Error('Worksheet not found. Files: '+Object.keys(files).join(', '));
+  if(!files[sk])throw new Error('Worksheet XML empty');
+  let wsText=dec.decode(files[sk]);
+
+  showXlsxMsg('⏳ Clearing template rows…',false);await yield_();
+
+  // ── 3. Remove rows 6+ — position-based slice (handles any row format reliably) ──
+  const sdEnd=wsText.indexOf('</sheetData>');
+  if(sdEnd>=0){
+    const pre=wsText.substring(0,sdEnd);
+    const re6=/<row\b[^>]*?\br="(\d+)"/g;
+    let firstGe6=-1,rm;
+    while((rm=re6.exec(pre))!==null){if(+rm[1]>=6){firstGe6=rm.index;break;}}
+    if(firstGe6>=0) wsText=wsText.slice(0,firstGe6)+'</sheetData>'+wsText.slice(sdEnd+12);
+  }
+  wsText=wsText.replace(/<row\s[^>]*\br="(\d+)"[^>]*\/>/g,(m,r)=>+r>=6?'':m);
+
+  // Remove merged-cell refs for rows >= 6 (prevents Excel repair warning)
+  wsText=wsText.replace(/<mergeCell\s+ref="[^"]*"\s*\/>/g,m=>{
+    const r1=(m.match(/ref="[A-Z]+(\d+):/)   ||[])[1];
+    const r2=(m.match(/:[A-Z]+(\d+)"/)        ||[])[1];
+    return ((r1&&+r1>=6)||(r2&&+r2>=6))?'':m;
+  });
+  wsText=wsText.replace(/<mergeCells[^/]*\/>/g,'');
+  wsText=wsText.replace(/<mergeCells[^>]*>\s*<\/mergeCells>/g,'');
+
+  showXlsxMsg('⏳ Mapping rows from rate cards…',false);await yield_();
+
+  // ── 4. Build data rows ──
+  const valid=uploadedFiles.filter(f=>!f.error&&f.outputRows.length>0);
+  const allRows=valid.flatMap(f=>f.outputRows);
+
+  const CSTYLE=[
+    ['56','57'],  // A Market
+    ['68','69'],  // B Media
+    ['68','69'],  // C Elements
+    ['16','16'],  // D Format
+    ['18','18'],  // E Platform
+    ['17','17'],  // F Unit Type
+    ['22','16'],  // G KPI's
+    ['23','23'],  // H Buy Type
+    ['16','16'],  // I Net CPM
+    ['20','71'],  // J Net Total
+  ];
+  const BORDER_COLS='KLMNOPQR'.split('');
+  let lastMkt='';
+  const newRowsXml=allRows.map((r,i)=>{
+    const rowNum=i+6;
+    const mkt=r.market||'';
+    const newGroup=mkt&&mkt!==lastMkt;
+    if(mkt)lastMkt=mkt;
+    const cells=CN_FIELDS.map((field,ci)=>{
+      const val=r[field]||'';
+      const ref=COL_LETTERS[ci]+rowNum;
+      const[sV,sB]=CSTYLE[ci];
+      if(field==='market'){
+        if(newGroup&&val)return `<c r="${ref}" s="${sV}" t="s"><v>${ssIdx(val)}</v></c>`;
+        return `<c r="${ref}" s="${sB}"/>`;
+      }
+      if(!val)return `<c r="${ref}" s="${sB}"/>`;
+      if(field==='net_cpm'||field==='net_total'){
+        const n=parseFloat(String(val).replace(/[^0-9.\-]/g,''));
+        if(!isNaN(n))return `<c r="${ref}" s="${sV}"><v>${n}</v></c>`;
+      }
+      if(field==='kpis'){
+        const clean=String(val).replace(/,/g,'').trim();
+        const n=parseFloat(clean);
+        if(!isNaN(n)&&/^[\d.]+$/.test(clean))return `<c r="${ref}" s="22"><v>${n}</v></c>`;
+      }
+      return `<c r="${ref}" s="${sV}" t="s"><v>${ssIdx(val)}</v></c>`;
+    }).join('');
+    const bCells=BORDER_COLS.map((c,j)=>`<c r="${c}${rowNum}" s="${j===0?'15':'14'}"/>`).join('');
+    return `<row r="${rowNum}" spans="1:30" s="13" customFormat="1" x14ac:dyDescent="0.3">${cells}${bCells}</row>`;
+  }).join('');
+
+  showXlsxMsg('⏳ Injecting '+allRows.length+' rows into template…',false);await yield_();
+
+  // ── 5. Inject rows ──
+  wsText=wsText.replace('</sheetData>',()=>newRowsXml+'</sheetData>');
+  wsText=wsText.replace('<sheetData/>',()=>'<sheetData>'+newRowsXml+'</sheetData>');
+  const lastRow=allRows.length+5;
+  wsText=wsText.replace(/(<dimension\s+ref=")[^"]*(")/,(_,a,b)=>a+'A1:AD'+lastRow+b);
+  files[sk]=enc.encode(wsText);
+
+  showXlsxMsg('⏳ Updating shared strings…',false);await yield_();
+
+  // ── 6. Update sharedStrings ──
+  if(ssk){
+    let ssXml=ssOrigXml;
+    if(newSsEntries.length){
+      const appendXml=newSsEntries.map(s=>`<si><t xml:space="preserve">${xmlEsc(s)}</t></si>`).join('');
+      ssXml=ssXml.replace('</sst>',()=>appendXml+'</sst>');
+    }
+    const total=nextSsIdx;
+    ssXml=ssXml.replace(/(<sst\b[^>]*?\buniqueCount=")[^"]*(")/,(_,a,b)=>a+total+b);
+    ssXml=ssXml.replace(/(<sst\b[^>]*?\bcount=")[^"]*(")/,(_,a,b)=>a+total+b);
+    files[ssk]=enc.encode(ssXml);
+  }
+
+  showXlsxMsg('⏳ Packing XLSX file…',false);await yield_();
+
+  return writeZIP(Object.entries(files).map(([name,data])=>({name,data})));
+}
+
+function showXlsxMsg(html,isErr){
+  const d=document.getElementById('xlsxErr');
+  d.innerHTML=html;
+  d.style.cssText='display:block;border-radius:7px;padding:10px 14px;font-size:13px;margin-bottom:10px;border:1px solid '+(isErr?'#fecaca;background:#fef2f2;color:#dc2626':'#86efac;background:#dcfce7;color:#14532d');
+}
+
+async function downloadXLSX(){
+  const btn=document.getElementById('btnXlsx');
+  document.getElementById('xlsxErr').style.display='none';
+  btn.textContent='⏳ Generating…'; btn.disabled=true;
+
+  const raw=document.getElementById('tplName').textContent.replace(/^✓\s*/,'').replace(/\.xlsx?$/i,'');
+  const fn=(raw||'CN_Print_Plan')+'_filled.xlsx';
+  const mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+  // ── Try File System Access API (opens native Save dialog) ──
+  if('showSaveFilePicker' in window){
+    let fh=null;
+    try{fh=await window.showSaveFilePicker({suggestedName:fn,types:[{description:'Excel Workbook',accept:{[mime]:['.xlsx']}}]});}
+    catch(e){
+      if(e.name==='AbortError'){btn.textContent='⬇ Download filled .xlsx';btn.disabled=false;return;}
+      // SecurityError or unavailable — fall through to blob approach
+    }
+    if(fh){
+      try{
+        btn.textContent='⏳ Building file…';
+        const data=await generateFilledXLSX();
+        const w=await fh.createWritable();await w.write(new Blob([data],{type:mime}));await w.close();
+        showXlsxMsg('✅ Saved as <strong>'+fn+'</strong>',false);
+      }catch(err){showXlsxMsg('Error: '+(err.message||err),true);console.error(err);}
+      btn.textContent='⬇ Download filled .xlsx';btn.disabled=false;return;
+    }
+  }
+
+  // ── Fallback: generate then show a direct link ──
+  try{
+    const data=await generateFilledXLSX();
+    const url=URL.createObjectURL(new Blob([data],{type:mime}));
+    const sz=(data.byteLength/1024).toFixed(0);
+    const a=document.createElement('a');a.href=url;a.download=fn;
+    a.textContent='⬇ Save '+fn+' ('+sz+' KB)';
+    a.style.cssText='display:inline-block;margin-top:4px;font-weight:700;color:#15803d;text-decoration:underline;cursor:pointer';
+    showXlsxMsg('File ready — right-click the link below and choose <em>Save link as</em> if clicking does nothing:<br>',false);
+    document.getElementById('xlsxErr').appendChild(a);
+    a.click(); // works in some contexts
+  }catch(err){showXlsxMsg('Error: '+(err.message||err),true);console.error(err);}
+  btn.textContent='⬇ Download filled .xlsx';btn.disabled=false;
+}
+
+// ── CSV download ──────────────────────────────────────────────────
+function downloadCSV(){
+  const esc=v=>{const s=String(v??'');return(s.includes(',')||s.includes('"')||s.includes('\n'))?'"'+s.replace(/"/g,'""')+'"':s;};
+  const valid=uploadedFiles.filter(f=>!f.error&&f.outputRows.length);
+  const lines=[CN_FIELDS.map(f=>CN_LABELS[f]).join(',')];
+  for(const f of valid)for(const r of f.outputRows)lines.push(CN_FIELDS.map(field=>esc(r[field])).join(','));
+  const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='CN_Print_Plan_Filled.csv';
+  a.style.display='none';document.body.appendChild(a);a.click();
+  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},300);
+}
+
+// ── Template upload ───────────────────────────────────────────────
+async function handleTplFile(file){
+  document.getElementById('tplDrop').className='drop loading';
+  document.getElementById('tplName').textContent='Reading…';
+  try{
+    // Store raw buffer for XLSX generation
+    const buf=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=e=>res(e.target.result);fr.onerror=rej;fr.readAsArrayBuffer(file);});
+    tplBuffer=buf;
+    document.getElementById('tplDrop').className='drop has-files';
+    document.getElementById('tplName').textContent='✓ '+file.name;
+    // Show XLSX button if we already have data
+    if(uploadedFiles.some(f=>!f.error&&f.outputRows.length)){
+      document.getElementById('btnXlsx').style.display='';
+    }
+  }catch(err){
+    document.getElementById('tplDrop').className='drop err';
+    document.getElementById('tplName').textContent='✗ '+(err.message||'Error');
+    tplBuffer=null;
+  }
+}
+
+// ── Drag & drop ───────────────────────────────────────────────────
+function onDragOver(e,id){e.preventDefault();document.getElementById(id).classList.add('over');}
+function onDragLeave(id){document.getElementById(id).classList.remove('over');}
+function onDropTpl(e){e.preventDefault();document.getElementById('tplDrop').classList.remove('over');if(e.dataTransfer.files[0])handleTplFile(e.dataTransfer.files[0]);}
+function onDropDat(e){e.preventDefault();document.getElementById('datDrop').classList.remove('over');if(e.dataTransfer.files.length)addFiles(e.dataTransfer.files);}
+function onDatInput(e){if(e.target.files.length)addFiles(e.target.files);e.target.value='';}
+function onTplInput(e){if(e.target.files[0])handleTplFile(e.target.files[0]);}
+</script>
+</body>
+</html>
