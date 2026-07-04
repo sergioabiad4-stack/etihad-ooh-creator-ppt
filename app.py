@@ -9,8 +9,6 @@ import threading
 import traceback
 import re
 import time
-import zipfile
-from datetime import date
 from pathlib import Path
 import requests
 
@@ -946,7 +944,7 @@ def download(job_id: str):
     response = send_file(
         str(output_path),
         as_attachment=True,
-        download_name="OOH_Proposal.pptx",
+        download_name=job["output"],
         mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
     )
 
@@ -1017,133 +1015,13 @@ def generate():
 # ---------------------------------------------------------------------------
 # CN Print Plan Filler
 # ---------------------------------------------------------------------------
+# Fills the bundled Conde Nast print plan template (assets/) from up to three
+# publisher rate cards (India / UK / US). All extraction and template surgery
+# lives in cn_print_plan.py; see that module for the section geometry.
 
-_CN_FIELDS = ['market','media','elements','format','platform','unit_type','kpis','buy_type','net_cpm','net_total']
-_CN_COL = {'market':1,'media':2,'elements':3,'format':4,'platform':5,
-            'unit_type':6,'kpis':7,'buy_type':8,'net_cpm':9,'net_total':10}
-_CN_KWDS = {
-    'market':    ['market','country','region','geo','territory'],
-    'media':     ['site','publisher','media','outlet','supplied by','supplier','publication'],
-    'elements':  ['package','description','placement','elements','product','brief'],
-    'format':    ['placement name','format','ad format','format/specs','specs'],
-    'platform':  ['platform','device','channel'],
-    'unit_type': ['unit type','kpi type','metric','kpi'],
-    'kpis':      ['kpi guarantee','units','quantity','impressions','views'],
-    'buy_type':  ['cost method','buy type','pricing method','revenue type'],
-    'net_cpm':   ['net cpm','net rate','cpm','rate'],
-    'net_total': ['total usd','total net','net total','cost','total cost','investment','budget'],
-}
-_PLATFORM_ABBR = {'instagram':'IG','facebook':'FB','twitter':'X','x (twitter)':'X',
-                  'linkedin':'LI','youtube':'YT','tiktok':'TT','snapchat':'SC'}
+from cn_print_plan import fill_cn_print_plan, CNPlanError
 
-# Hardcoded column indices (0-indexed) for known CN rate card formats — from skill specification
-_MARKET_MAPS = {
-    'uk': {           # CN Traveller UK rate card
-        'elements':  1,    # Col B(2): PLACEMENT
-        'format':    2,    # Col C(3): FORMAT
-        'unit_type': 7,    # Col H(8): KPI type
-        'kpis':      12,   # Col M(13): KPI GUARANTEE
-        'net_total': 17,   # Col R(18): TOTAL USD
-    },
-    'usa': {          # CN Traveller US rate card
-        'media':     1,    # Col B(2): Site
-        'elements':  4,    # Col E(5): Package
-        'format':    5,    # Col F(6): Placement Name
-        'platform':  6,    # Col G(7): Platform
-        'unit_type': 8,    # Col I(9): Unit type
-        'kpis':      9,    # Col J(10): Units
-        'buy_type':  10,   # Col K(11): Cost method
-        'net_cpm':   11,   # Col L(12): Rate
-        'net_total': 12,   # Col M(13): Cost
-    },
-}
-
-
-def _cn_match(header):
-    h = str(header).lower().strip()
-    if not h or h in ('nan','none'):
-        return None
-    for field, kws in _CN_KWDS.items():
-        if h in kws:
-            return field
-    for field, kws in _CN_KWDS.items():
-        for kw in kws:
-            if kw in h or h in kw:
-                return field
-    return None
-
-
-def _cn_find_header(rows):
-    targets = {'site','placement','platform','cost','units','package','format','rate','cpm','media','kpi'}
-    for i, row in enumerate(rows[:25]):
-        vals = {str(v).lower().strip() for v in row if v is not None and str(v).strip()}
-        if len(vals & targets) >= 2:
-            return i
-    return 0
-
-
-def _cn_extract(file_bytes, market_label):
-    import openpyxl as opx
-    wb = opx.load_workbook(io.BytesIO(file_bytes), data_only=True)
-    ws = wb.active
-    raw = [[c.value for c in row] for row in ws.iter_rows()]
-    if not raw:
-        return []
-
-    hdr = _cn_find_header(raw)
-    headers = raw[hdr]
-    data = raw[hdr + 1:]
-
-    # Normalise market key for lookup
-    mkt_key = market_label.lower().strip()
-    if mkt_key in ('us', 'u.s.', 'u.s.a.', 'united states'):
-        mkt_key = 'usa'
-    hardcoded = _MARKET_MAPS.get(mkt_key, {})
-
-    # Hardcoded columns first (reliable), then auto-detect the rest from headers
-    field_col = {}
-    used = set(hardcoded.values())
-    for field in _CN_FIELDS:
-        if field == 'market':
-            continue
-        if field in hardcoded:
-            field_col[field] = hardcoded[field]
-        else:
-            for ci, h in enumerate(headers):
-                if ci in used:
-                    continue
-                if _cn_match(h) == field:
-                    field_col[field] = ci
-                    used.add(ci)
-                    break
-
-    results, sparse_run, last_mkt = [], 0, ''
-    for row in data:
-        r = {}
-        for field in _CN_FIELDS:
-            ci = field_col.get(field)
-            v = row[ci] if ci is not None and ci < len(row) else None
-            s = str(v).strip() if v is not None else ''
-            r[field] = '' if s in ('nan','None','N/A','n/a') else s
-
-        r['market'] = r['market'] or market_label or last_mkt
-        if r['market']:
-            last_mkt = r['market']
-        p = r.get('platform','')
-        r['platform'] = _PLATFORM_ABBR.get(p.lower(), p)
-
-        filled = sum(1 for f in _CN_FIELDS if f != 'market' and r[f])
-        if filled < 3:
-            sparse_run += 1
-            if sparse_run >= 3 and results:
-                break
-            continue
-        sparse_run = 0
-        if any(len(r[f]) > 80 for f in _CN_FIELDS):
-            continue
-        results.append(r)
-
-    return results
+CN_TEMPLATE_PATH = BASE_DIR / "assets" / "CN_Print_Plan_Template_EMPTY.xlsx"
 
 
 @app.route('/print-plan')
@@ -1153,233 +1031,189 @@ def print_plan_page():
 
 @app.route('/fill-cn-plan', methods=['POST'])
 def fill_cn_plan():
-    import openpyxl as opx
-    from openpyxl.cell.cell import MergedCell
+    cards = {}
+    for mkt in ('india', 'uk', 'us'):
+        f = request.files.get(mkt)
+        if f and f.filename:
+            cards[mkt] = f.read()
+    if not cards:
+        return 'Upload at least one rate card (India, UK or US)', 400
 
     tpl = request.files.get('template')
-    rcs = request.files.getlist('rate_cards')
-    markets = request.form.getlist('markets')
-
-    if not tpl:
-        return 'Template file required', 400
-    if not rcs or not any(f.filename for f in rcs):
-        return 'At least one rate card required', 400
+    template_source = io.BytesIO(tpl.read()) if tpl and tpl.filename else CN_TEMPLATE_PATH
+    header = {k: (request.form.get(k) or '').strip()
+              for k in ('client', 'campaign', 'agency', 'contact')}
 
     try:
-        wb = opx.load_workbook(io.BytesIO(tpl.read()))
-        ws = wb.active
-
-        # Clear values from row 6 onwards (preserve styles)
-        for row in ws.iter_rows(min_row=6):
-            for cell in row:
-                if not isinstance(cell, MergedCell):
-                    cell.value = None
-
-        # Extract rows from each rate card
-        all_rows = []
-        for i, rc in enumerate(rcs):
-            mkt = markets[i] if i < len(markets) else ''
-            try:
-                all_rows.extend(_cn_extract(rc.read(), mkt))
-            except Exception as e:
-                print(f'Rate card {rc.filename}: {e}')
-
-        # Write into template starting at row 6
-        last_mkt = ''
-        for i, rd in enumerate(all_rows):
-            r = 6 + i
-            mkt = rd.get('market','')
-            for field in _CN_FIELDS:
-                col = _CN_COL[field]
-                if field == 'market':
-                    if mkt and mkt != last_mkt:
-                        c = ws.cell(row=r, column=col)
-                        if not isinstance(c, MergedCell):
-                            c.value = mkt
-                    continue
-                val = rd.get(field,'')
-                if not val:
-                    continue
-                c = ws.cell(row=r, column=col)
-                if isinstance(c, MergedCell):
-                    continue
-                if field in ('net_cpm','net_total','kpis'):
-                    try:
-                        clean = re.sub(r'[^0-9.\-]','',val)
-                        c.value = float(clean) if '.' in clean else int(clean)
-                    except Exception:
-                        c.value = val
-                else:
-                    c.value = val
-            if mkt:
-                last_mkt = mkt
-
-        out = io.BytesIO()
-        wb.save(out)
-        out.seek(0)
-        base = tpl.filename.rsplit('.',1)[0] if tpl.filename else 'CN_Print_Plan'
-        return send_file(out, as_attachment=True,
-                         download_name=f'{base}_filled.xlsx',
-                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-    except Exception as e:
+        out = fill_cn_print_plan(template_source, cards, header)
+    except CNPlanError as e:
+        return str(e), 400
+    except Exception:
         print(traceback.format_exc())
-        return str(e), 500
+        return 'Failed to fill the plan — check the server logs', 500
+
+    campaign = re.sub(r'[^A-Za-z0-9 _\-]', '', header.get('campaign', '')).strip()
+    fname = (campaign.replace(' ', '_') + '_Print_Plan.xlsx') if campaign else 'CN_Print_Plan_Filled.xlsx'
+    return send_file(out, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
 # ---------------------------------------------------------------------------
 # Etihad OOH Proposal Builder
 # ---------------------------------------------------------------------------
-# Merges a vendor PPT (site photos, maps, GPS links, site data — one slide per
-# site) into an Etihad-branded template. Two modes, detected automatically:
-#   Mode A — template has 3 slides (title + data template + divider): clone
-#            the data slide for every site and fill in all text + images.
-#   Mode B — template already has 17+ filled slides with "Pictures"/"Map"
-#            placeholder shapes: match by site ID and drop in images only.
+# Fills the Etihad-branded template from the vendor-supplied Excel media plan
+# (one row per site: State/Market/Location/Contacts Per Day/Media/Type/Units/
+# W/H/SOV %/Lead Time/Language/Screen Resolution/Screen Loop). The template's
+# data slide (shape IDs 138-146) is cloned once per site, and a divider slide
+# (shape IDs 169-171) is cloned once per market/city, in first-seen order.
+# Since the Excel has no vendor photos, the "Pictures" placeholder is dropped
+# and "Map" is filled with a geocoded Google Maps screenshot (same lookup the
+# main OOH generator uses) — fetching one map per site is network-bound, so
+# the build runs as a background job polled via the existing /api/status and
+# /api/download endpoints rather than a single synchronous request.
 
 _ETIHAD_NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 _ETIHAD_NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 _ETIHAD_REL_HYPERLINK = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink'
-
-_ETIHAD_PHOTO_MAX = (800, 600)
-_ETIHAD_MAP_MAX   = (600, 450)
-_ETIHAD_JPEG_Q     = 55
 _ETIHAD_LINK_H = 324000   # EMU height of the "View on Google Maps" text box
 _ETIHAD_GAP    = 36000    # EMU gap between map image and hyperlink text box
-_ETIHAD_SHARED_IMAGES = {'image41.png', 'image41.jpeg', 'image44.png', 'image42.png'}
+
+# Header text -> internal field name. Matched case-insensitively against the
+# Excel's header row, wherever that row happens to land (there's a Date/
+# Client/Campaign block above it).
+_ETIHAD_HEADER_KEYWORDS = {
+    'sno':        ['s. no.', 's.no.', 's no', 'sno'],
+    'state':      ['state'],
+    'market':     ['market'],
+    'location':   ['location'],
+    'audience':   ['contacts per day'],
+    'media':      ['media'],
+    'type':       ['type'],
+    'units':      ['units'],
+    'w':          ['w'],
+    'h':          ['h'],
+    'sov':        ['sov %', 'sov%'],
+    'lead_time':  ['lead time'],
+    'language':   ['language'],
+    'resolution': ['screen resolution (in pixels)', 'screen resolution'],
+    'loop':       ['screen loop'],
+}
+# These columns get merged across multi-row site clusters in the source sheet
+# (e.g. two screens at the same address) — blank cells inherit the last value.
+_ETIHAD_FORWARD_FILL_FIELDS = ('state', 'market', 'location', 'audience', 'sov')
 
 
-def _etihad_extract_shape_text(slide_xml: str, shape_id: int) -> str:
-    """Return the concatenated text of a shape by its numeric cNvPr id (raw XML)."""
-    pattern = re.compile(
-        r'<p:sp>(?:(?!<p:sp>).)*?id="' + str(shape_id) + r'".*?</p:sp>', re.DOTALL
-    )
-    m = pattern.search(slide_xml)
-    if not m:
-        return ''
-    return ''.join(re.findall(r'<a:t>([^<]*)</a:t>', m.group(0))).strip()
+def _etihad_find_header_row(rows: list) -> int:
+    for i, row in enumerate(rows[:20]):
+        vals = {str(v).strip().lower() for v in row if v is not None and str(v).strip()}
+        if 'location' in vals and 'market' in vals:
+            return i
+    raise ValueError("Could not find the header row (expected 'Location' and 'Market' columns) in the Excel file.")
 
 
-def _etihad_compress(raw_bytes: bytes | None, max_dims: tuple, filename: str = '') -> bytes | None:
-    """Resize + JPEG-compress image bytes; unreadable formats become a white placeholder."""
-    if not raw_bytes:
-        return None
-    from PIL import Image
-    ext = os.path.splitext(filename)[1].lower()
-    if ext in ('.emf', '.wmf'):
-        placeholder = Image.new('RGB', max_dims, color=(255, 255, 255))
-        buf = io.BytesIO()
-        placeholder.save(buf, 'JPEG', quality=60)
-        return buf.getvalue()
-    try:
-        img = Image.open(io.BytesIO(raw_bytes)).convert('RGB')
-        img.thumbnail(max_dims, Image.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, 'JPEG', quality=_ETIHAD_JPEG_Q, optimize=True)
-        return buf.getvalue()
-    except Exception:
-        placeholder = Image.new('RGB', max_dims, color=(255, 255, 255))
-        buf = io.BytesIO()
-        placeholder.save(buf, 'JPEG', quality=60)
-        return buf.getvalue()
+def _etihad_parse_excel_sites(excel_bytes: bytes) -> list:
+    """Parse the vendor media-plan Excel into a flat list of site dicts, one per data row."""
+    import openpyxl as opx
+    wb = opx.load_workbook(io.BytesIO(excel_bytes), data_only=True)
+    ws = wb.active
+    raw = [[c.value for c in row] for row in ws.iter_rows()]
+    if not raw:
+        raise ValueError("The Excel file is empty.")
 
+    hdr_idx = _etihad_find_header_row(raw)
+    headers = [str(h).strip().lower() if h is not None else '' for h in raw[hdr_idx]]
 
-def _etihad_extract_images(vendor_bytes: bytes) -> dict:
-    """Extract + compress site photo and map image for every site in the vendor PPT."""
-    results = {}
-    with zipfile.ZipFile(io.BytesIO(vendor_bytes), 'r') as zf:
-        media_files = {os.path.basename(n): zf.read(n)
-                       for n in zf.namelist() if n.startswith('ppt/media/')}
-        slide_names = sorted(
-            [n for n in zf.namelist() if re.match(r'ppt/slides/slide\d+\.xml$', n)],
-            key=lambda x: int(re.search(r'(\d+)', x).group(1))
-        )
+    field_col = {}
+    for field, keywords in _ETIHAD_HEADER_KEYWORDS.items():
+        for ci, h in enumerate(headers):
+            if h in keywords:
+                field_col[field] = ci
+                break
 
-        for slide_path in slide_names:
-            slide_xml = zf.read(slide_path).decode('utf-8', errors='replace')
-            rels_path = slide_path.replace('slides/', 'slides/_rels/') + '.rels'
-            if rels_path not in zf.namelist():
-                continue
-            rels_xml = zf.read(rels_path).decode('utf-8', errors='replace')
-            rid_to_img = dict(re.findall(r'Id="(rId\d+)"[^>]*Target="\.\./media/([^"]+)"', rels_xml))
+    if 'location' not in field_col or 'market' not in field_col:
+        raise ValueError("Could not find 'Location' and 'Market' columns in the Excel file.")
 
-            site_id  = _etihad_extract_shape_text(slide_xml, 13)
-            maps_url = _etihad_extract_shape_text(slide_xml, 23)
-            if not site_id:
-                continue  # divider or cover slide
+    def cell(row, field):
+        ci = field_col.get(field)
+        if ci is None or ci >= len(row) or row[ci] is None:
+            return ''
+        return str(row[ci]).strip()
 
-            # Photo sits at x≈0,y≈0 (top-left); map sits at x>5M EMU (upper-right)
-            photo_name = map_name = None
-            for pic in re.findall(r'<p:pic>.*?</p:pic>', slide_xml, re.DOTALL):
-                embed = re.search(r'r:embed="(rId\d+)"', pic)
-                off   = re.search(r'<a:off[^>]*x="(-?\d+)"[^>]*y="(-?\d+)"', pic)
-                if not embed or not off:
-                    continue
-                img_name = rid_to_img.get(embed.group(1), '')
-                if os.path.basename(img_name) in _ETIHAD_SHARED_IMAGES:
-                    continue
-                x, y = int(off.group(1)), int(off.group(2))
-                if abs(x) < 15000 and y < 15000:
-                    photo_name = os.path.basename(img_name)
-                elif x > 5_000_000:
-                    map_name = os.path.basename(img_name)
-
-            results[site_id] = {
-                'maps_url': maps_url,
-                'photo': _etihad_compress(media_files.get(photo_name), _ETIHAD_PHOTO_MAX, photo_name or '') if photo_name else None,
-                'map':   _etihad_compress(media_files.get(map_name), _ETIHAD_MAP_MAX, map_name or '') if map_name else None,
-            }
-
-    return results
-
-
-def _etihad_get_shape_text(slide, shape_id: int) -> str:
-    for sh in slide.shapes:
-        if sh.shape_id == shape_id:
-            try:
-                return sh.text_frame.text.strip()
-            except Exception:
-                return ''
-    return ''
-
-
-def _etihad_parse_sites(vendor_bytes: bytes) -> list:
-    """Extract structured site data from the vendor PPTX, tagged JHB or PTA."""
-    prs = Presentation(io.BytesIO(vendor_bytes))
     sites = []
-    for slide in prs.slides:
-        sid = _etihad_get_shape_text(slide, 13)
-        if not sid:
-            continue
+    last = {f: '' for f in _ETIHAD_FORWARD_FILL_FIELDS}
+    sno_counter = 0
+
+    for row in raw[hdr_idx + 1:]:
+        if not cell(row, 'sno'):
+            continue  # blank separator row or a "<City> Total" subtotal row — neither has a serial number
+
+        values = {}
+        for field in _ETIHAD_FORWARD_FILL_FIELDS:
+            v = cell(row, field)
+            values[field] = v or last[field]
+            last[field] = values[field]
+
+        sno_counter += 1
         sites.append({
-            'id':       sid,
-            'road':     _etihad_get_shape_text(slide, 24),
-            'lm1':      _etihad_get_shape_text(slide, 25),
-            'lm2':      _etihad_get_shape_text(slide, 26),
-            'size':     _etihad_get_shape_text(slide, 27),
-            'format':   _etihad_get_shape_text(slide, 28),
-            'desc':     _etihad_get_shape_text(slide, 29),
-            'audience': _etihad_get_shape_text(slide, 35),
-            'maps_url': _etihad_get_shape_text(slide, 23),
+            'sno':        sno_counter,
+            'state':      values['state'],
+            'market':     values['market'] or 'Other',
+            'location':   values['location'],
+            'audience':   values['audience'],
+            'media':      cell(row, 'media'),
+            'type':       cell(row, 'type'),
+            'units':      cell(row, 'units') or '1',
+            'w':          cell(row, 'w'),
+            'h':          cell(row, 'h'),
+            'sov':        values['sov'],
+            'lead_time':  cell(row, 'lead_time'),
+            'language':   cell(row, 'language') or 'English',
+            'resolution': cell(row, 'resolution'),
+            'loop':       cell(row, 'loop'),
         })
 
-    # Slides after the PTA divider slide are Pretoria; everything else is JHB
-    site_lookup = {s['id']: s for s in sites}
-    in_pta = False
-    for slide in prs.slides:
-        sid = _etihad_get_shape_text(slide, 13)
-        if not sid:
-            all_text = ' '.join(
-                sh.text_frame.text for sh in slide.shapes if hasattr(sh, 'text_frame')
-            ).upper()
-            if 'PRETORIA' in all_text or ' PTA' in all_text:
-                in_pta = True
-        elif sid in site_lookup:
-            site_lookup[sid]['city'] = 'PTA' if in_pta else 'JHB'
-    for s in sites:
-        s.setdefault('city', 'JHB')
-
+    if not sites:
+        raise ValueError("No site rows found under the header row.")
     return sites
+
+
+def _etihad_format_site_fields(site: dict) -> dict:
+    """Derive the display strings that go on the Etihad slide from raw Excel fields."""
+    audience_digits = site['audience'].replace(',', '')
+    try:
+        audience_fmt = f"{int(float(audience_digits)):,} daily contacts" if audience_digits else ''
+    except ValueError:
+        audience_fmt = site['audience']
+
+    size_fmt = f"{site['w']} x {site['h']} ft" if site['w'] and site['h'] else ''
+
+    sov_fmt = ''
+    if site['sov']:
+        try:
+            sov_fmt = f"{float(site['sov']):.1f}% SOV"
+        except ValueError:
+            sov_fmt = site['sov']
+
+    spot_duration = ''
+    m = re.search(r'(\d+)\s*sec', site['loop'], re.IGNORECASE)
+    if m:
+        spot_duration = m.group(1) + ' seconds'
+
+    visibility = ', '.join(p for p in (site['media'], site['type'], site['resolution']) if p)
+
+    return {
+        'title':         f"{site['market'].upper()} — SITE {site['sno']:02d}",
+        'location':      site['location'][:300],
+        'visibility':    visibility[:150],
+        'audience':      audience_fmt,
+        'size':          size_fmt,
+        'units':         site['units'],
+        'spot_duration': spot_duration,
+        'format':        site['type'] or site['media'],
+        'sov':           sov_fmt,
+        'language':      site['language'],
+        'deadline':      site['lead_time'],
+    }
 
 
 def _etihad_clone_slide(prs: Presentation, idx: int):
@@ -1438,8 +1272,8 @@ def _etihad_append_value(tf, idx: int, value: str, sz: int = 900):
     p.append(_etihad_make_run('  ' + value, sz=sz, color='1A1A1A', bold=False))
 
 
-def _etihad_fill_data_slide(slide, site: dict):
-    """Fill all text fields on a cloned Etihad data slide (Mode A)."""
+def _etihad_fill_data_slide(slide, f: dict):
+    """Fill all text fields on a cloned Etihad data slide from formatted site fields."""
     for sh in slide.shapes:
         sid = sh.shape_id
         try:
@@ -1447,28 +1281,24 @@ def _etihad_fill_data_slide(slide, site: dict):
         except Exception:
             continue
 
-        if sid == 138:    # Site ID
-            _etihad_set_para(tf, 0, site['id'], sz=2000, color='898989', bold=True)
+        if sid == 138:    # Site title
+            _etihad_set_para(tf, 0, f['title'], sz=2000, color='898989', bold=True)
         elif sid == 139:  # Location / Visibility / Audience
-            _etihad_set_para(tf, 2, site['road'], sz=950)
-            _etihad_set_para(tf, 5, site['desc'][:130], sz=950)
-            _etihad_set_para(tf, 7, site['audience'], sz=950)
+            _etihad_set_para(tf, 2, f['location'], sz=950)
+            _etihad_set_para(tf, 5, f['visibility'], sz=950)
+            _etihad_set_para(tf, 7, f['audience'], sz=950)
         elif sid == 140:  # Size / Period / Nb Units / Spot duration
-            _etihad_append_value(tf, 0, site['size'], sz=950)
-            _etihad_append_value(tf, 4, '1', sz=950)
-            m = re.search(r'(\d+)\s*SECOND', site['format'].upper())
-            if m:
-                _etihad_append_value(tf, 6, m.group(1) + ' seconds', sz=950)
+            _etihad_append_value(tf, 0, f['size'], sz=950)
+            _etihad_append_value(tf, 4, f['units'], sz=950)
+            _etihad_append_value(tf, 6, f['spot_duration'], sz=950)
         elif sid == 141:  # Format / SOV / Traffic / Specs
-            fmt_line = site['format'].split('\n')[0].strip()[:80]
-            _etihad_append_value(tf, 0, fmt_line, sz=950)
-            _etihad_append_value(tf, 4, site['audience'], sz=950)
-            _etihad_append_value(tf, 5, site['size'], sz=950)
-        elif sid == 142:  # Nearby / Lead Language / Deadline
-            _etihad_append_value(tf, 0, site['lm1'], sz=950)
-            if site['lm2']:
-                _etihad_set_para(tf, 2, site['lm2'][:110], sz=950)
-            _etihad_append_value(tf, 3, 'English', sz=950)
+            _etihad_append_value(tf, 0, f['format'], sz=950)
+            _etihad_append_value(tf, 2, f['sov'], sz=950)
+            _etihad_append_value(tf, 4, f['audience'], sz=950)
+            _etihad_append_value(tf, 5, f['size'], sz=950)
+        elif sid == 142:  # Nearby location (no data source — left blank) / Lead Language / Material Deadline
+            _etihad_append_value(tf, 3, f['language'], sz=950)
+            _etihad_append_value(tf, 5, f['deadline'], sz=950)
 
 
 def _etihad_insert_map_with_link(slide, map_stream, ML, MT, MW, MH, maps_url: str):
@@ -1494,60 +1324,55 @@ def _etihad_insert_map_with_link(slide, map_stream, ML, MT, MW, MH, maps_url: st
         hl.set(f'{{{_ETIHAD_NS_R}}}id', rId)
 
 
-def _etihad_insert_images(slide, site_imgs: dict, maps_url: str):
-    """Locate 'Pictures'/'Map' placeholder shapes, remove them, insert real images in their place."""
-    PL = PT = PW = PH = ML = MT = MW = MH = None
+def _etihad_insert_map_only(slide, map_bytes: bytes | None, maps_url: str):
+    """Drop the 'Pictures' placeholder (no vendor photo available) and fill 'Map' with a geocoded screenshot."""
     pics_sh = map_sh = None
+    ML = MT = MW = MH = None
 
     for sh in slide.shapes:
         try:
             txt = sh.text_frame.text.strip()
-            if txt == 'Pictures':
-                pics_sh = sh
-                PL, PT, PW, PH = sh.left, sh.top, sh.width, sh.height
-            elif txt in ('Map', 'Map '):
-                map_sh = sh
-                ML, MT, MW, MH = sh.left, sh.top, sh.width, sh.height
         except Exception:
-            pass
+            continue
+        if txt == 'Pictures':
+            pics_sh = sh
+        elif txt in ('Map', 'Map '):
+            map_sh = sh
+            ML, MT, MW, MH = sh.left, sh.top, sh.width, sh.height
 
     spt = slide.shapes._spTree
-
-    if site_imgs.get('photo') and pics_sh:
+    if pics_sh is not None:
         spt.remove(pics_sh._element)
-        slide.shapes.add_picture(io.BytesIO(site_imgs['photo']), PL, PT, PW, PH)
-
-    if site_imgs.get('map') and map_sh:
+    if map_sh is not None:
         spt.remove(map_sh._element)
-        _etihad_insert_map_with_link(slide, io.BytesIO(site_imgs['map']), ML, MT, MW, MH, maps_url)
+        if map_bytes:
+            _etihad_insert_map_with_link(slide, io.BytesIO(map_bytes), ML, MT, MW, MH, maps_url)
 
 
-def _etihad_build_mode_a(prs: Presentation, sites: list, images: dict):
-    """Full build: clone template slides 1 (data) and 2 (divider) for every site/city."""
-    jhb = [s for s in sites if s.get('city') == 'JHB']
-    pta = [s for s in sites if s.get('city') == 'PTA']
+def _etihad_maps_search_url(location: str, market: str) -> str:
+    from urllib.parse import quote
+    return f"https://www.google.com/maps/search/?api=1&query={quote(f'{location}, {market}')}"
 
-    def add_divider(name):
-        d = _etihad_clone_slide(prs, 2)
-        for sh in d.shapes:
+
+def _etihad_build_deck(prs: Presentation, sites: list, map_lookup: dict):
+    """Clone the data template slide once per site and a divider slide once per market."""
+    markets_in_order = list(dict.fromkeys(s['market'] for s in sites))
+
+    for market in markets_in_order:
+        divider = _etihad_clone_slide(prs, 2)
+        for sh in divider.shapes:
             if sh.shape_id in (169, 170, 171):
                 try:
-                    _etihad_set_para(sh.text_frame, 0, name, sz=3600, color='1A1A1A', bold=True)
+                    _etihad_set_para(sh.text_frame, 0, market.upper(), sz=3600, color='1A1A1A', bold=True)
                     break
                 except Exception:
                     pass
 
-    add_divider('JOHANNESBURG')
-    for s in jhb:
-        sl = _etihad_clone_slide(prs, 1)
-        _etihad_fill_data_slide(sl, s)
-        _etihad_insert_images(sl, images.get(s['id'], {}), s.get('maps_url', ''))
-
-    add_divider('PRETORIA')
-    for s in pta:
-        sl = _etihad_clone_slide(prs, 1)
-        _etihad_fill_data_slide(sl, s)
-        _etihad_insert_images(sl, images.get(s['id'], {}), s.get('maps_url', ''))
+        for site in (s for s in sites if s['market'] == market):
+            slide = _etihad_clone_slide(prs, 1)
+            _etihad_fill_data_slide(slide, _etihad_format_site_fields(site))
+            map_bytes, maps_url = map_lookup.get(site['sno'], (None, ''))
+            _etihad_insert_map_only(slide, map_bytes, maps_url)
 
     # Remove the original template slides 1 & 2, keep the title slide (0)
     sll = prs.slides._sldIdLst
@@ -1563,119 +1388,53 @@ def _etihad_build_mode_a(prs: Presentation, sites: list, images: dict):
                 pass
 
 
-def _etihad_build_mode_b(prs: Presentation, images: dict):
-    """Insert images into a pre-filled deck that already has placeholder shapes."""
-    for slide in prs.slides:
-        site_id = None
-        for sh in slide.shapes:
+def _etihad_build_job(job_id: str, template_bytes: bytes, sites: list):
+    """Background job: fetch a map screenshot per site, then assemble the deck."""
+    def update(status, message, progress=0):
+        with jobs_lock:
+            jobs[job_id]['status'] = status
+            jobs[job_id]['message'] = message
+            jobs[job_id]['progress'] = progress
+
+    try:
+        total = len(sites)
+        map_lookup = {}
+        for idx, site in enumerate(sites):
+            pct = int((idx / total) * 90)
+            update('building', f"Fetching map {idx + 1}/{total}: {site['location'][:60]}…", pct)
+            map_bytes = None
             try:
-                txt = sh.text_frame.text.strip()
-                if txt.startswith('RSA'):
-                    site_id = txt.split('\n')[0].strip()
-                    break
-            except Exception:
-                pass
-        if not site_id or site_id not in images:
-            continue
-        site_imgs = images[site_id]
-        _etihad_insert_images(slide, site_imgs, site_imgs.get('maps_url', ''))
+                map_bytes = get_map_image_bytes(site['location'], site['market'], zoom=16)
+                if not map_bytes:
+                    # The full location text (e.g. "Set of 2 - Bandra Kurla Complex - Entrance")
+                    # is often too descriptive for the geocoder — fall back to a city-level map
+                    # rather than leaving the placeholder blank.
+                    map_bytes = get_map_image_bytes(site['market'], site['market'], zoom=12)
+            except Exception as e:
+                print(f"[ETIHAD MAP] failed for site {site['sno']} ({site['location']!r}): {e}")
+            map_lookup[site['sno']] = (map_bytes, _etihad_maps_search_url(site['location'], site['market']))
 
+        update('building', 'Assembling slides…', 92)
+        prs = Presentation(io.BytesIO(template_bytes))
+        _etihad_build_deck(prs, sites, map_lookup)
 
-def _etihad_detect_mode(template_bytes: bytes) -> str:
-    """Mode A = 3-slide blank template. Mode B = pre-filled deck with placeholders on 4+ slides."""
-    prs = Presentation(io.BytesIO(template_bytes))
-    placeholder_slides = 0
-    for slide in prs.slides:
-        for sh in slide.shapes:
-            try:
-                if sh.text_frame.text.strip() in ('Pictures', 'Map', 'Map '):
-                    placeholder_slides += 1
-                    break
-            except Exception:
-                pass
-    return 'B' if placeholder_slides > 3 else 'A'
+        update('building', 'Saving file…', 97)
+        output_filename = f"Etihad_OOH_Proposal_{job_id[:8]}.pptx"
+        output_path = OUTPUT_FOLDER / output_filename
+        prs.save(str(output_path))
 
+        with jobs_lock:
+            jobs[job_id]['status']   = 'done'
+            jobs[job_id]['message']  = f"Done! {total} site slide(s) generated."
+            jobs[job_id]['progress'] = 100
+            jobs[job_id]['output']   = output_filename
 
-def _etihad_nuclear_clean(src_bytes: bytes) -> bytes:
-    """Strip Google Slides metadata from the PPTX zip so it opens natively in PowerPoint."""
-    SKIP = {'ppt/metadata', 'docProps/custom.xml'}
-    google_ext = re.compile(r'<[ap]:ext\s+uri="[^"]*[Gg]oogle[^"]*">.*?</[ap]:ext>', re.DOTALL)
-    go_ns = re.compile(r'\s+xmlns:go="[^"]*"')
-
-    entries = {}
-    with zipfile.ZipFile(io.BytesIO(src_bytes), 'r') as zin:
-        for name in zin.namelist():
-            if any(name == s or name.startswith(s + '/') for s in SKIP):
-                continue
-            entries[name] = zin.read(name)
-
-    for key in list(entries.keys()):
-        if not (key.endswith('.xml') or key.endswith('.rels')):
-            continue
-        try:
-            data = entries[key].decode('utf-8', errors='replace')
-        except Exception:
-            continue
-        orig = data
-        if key.endswith('.rels'):
-            data = re.sub(r'<Relationship[^>]*Type="[^"]*google[^"]*"[^>]*/?>', '', data, flags=re.IGNORECASE)
-        if key.endswith('.xml'):
-            data = google_ext.sub('', data)
-            data = go_ns.sub('', data)
-        if data != orig:
-            entries[key] = data.encode('utf-8')
-
-    ct = entries.get('[Content_Types].xml', b'').decode()
-    ct = re.sub(r'<Override[^>]*/metadata[^>]*/>', '', ct)
-    ct = re.sub(r'<Default[^>]*application/binary[^>]*/>', '', ct)
-    entries['[Content_Types].xml'] = ct.encode()
-
-    out = io.BytesIO()
-    with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zout:
-        zout.writestr('[Content_Types].xml', entries.pop('[Content_Types].xml'))
-        if '_rels/.rels' in entries:
-            zout.writestr('_rels/.rels', entries.pop('_rels/.rels'))
-        for name, data in entries.items():
-            zout.writestr(name, data)
-    return out.getvalue()
-
-
-def build_etihad_proposal(vendor_bytes: bytes, template_bytes: bytes) -> tuple[bytes, dict]:
-    """Merge the vendor PPT into the Etihad template. Returns (output_pptx_bytes, summary)."""
-    images = _etihad_extract_images(vendor_bytes)
-    mode = _etihad_detect_mode(template_bytes)
-    prs = Presentation(io.BytesIO(template_bytes))
-
-    if mode == 'A':
-        sites = _etihad_parse_sites(vendor_bytes)
-        for s in sites:
-            if s['id'] in images:
-                s['maps_url'] = images[s['id']].get('maps_url', s.get('maps_url', ''))
-        _etihad_build_mode_a(prs, sites, images)
-        site_count = len(sites)
-    else:
-        _etihad_build_mode_b(prs, images)
-        site_count = len(images)
-
-    raw = io.BytesIO()
-    prs.save(raw)
-    cleaned = _etihad_nuclear_clean(raw.getvalue())
-
-    warnings = []
-    for sid, img_data in images.items():
-        if not img_data.get('photo'):
-            warnings.append(f"No photo found for {sid}")
-        if not img_data.get('map'):
-            warnings.append(f"No map found for {sid}")
-
-    summary = {
-        'mode':    mode,
-        'slides':  len(Presentation(io.BytesIO(cleaned)).slides),
-        'sites':   site_count,
-        'size_mb': round(len(cleaned) / 1024 / 1024, 2),
-        'warnings': warnings,
-    }
-    return cleaned, summary
+    except Exception as exc:
+        with jobs_lock:
+            jobs[job_id]['status']   = 'error'
+            jobs[job_id]['message']  = f"Error: {exc}"
+            jobs[job_id]['progress'] = 0
+        print(traceback.format_exc())
 
 
 @app.route('/etihad-ooh')
@@ -1685,36 +1444,37 @@ def etihad_ooh_page():
 
 @app.route('/build-etihad-proposal', methods=['POST'])
 def build_etihad_proposal_route():
-    vendor   = request.files.get('vendor')
-    template = request.files.get('template')
+    """Step 1: upload the vendor Excel plan + Etihad template, parse the Excel, start the build job."""
+    excel_file    = request.files.get('excel')
+    template_file = request.files.get('template')
 
-    if not vendor or not vendor.filename:
-        return 'Vendor PPT file is required', 400
-    if not template or not template.filename:
-        return 'Etihad template file is required', 400
-    if not vendor.filename.lower().endswith('.pptx'):
-        return 'Vendor file must be a .pptx', 400
-    if not template.filename.lower().endswith('.pptx'):
-        return 'Etihad template file must be a .pptx', 400
+    if not excel_file or not excel_file.filename:
+        return jsonify({'error': 'Excel site-plan file is required.'}), 400
+    if not template_file or not template_file.filename:
+        return jsonify({'error': 'Etihad template file is required.'}), 400
+    if not excel_file.filename.lower().endswith(('.xlsx', '.xls')):
+        return jsonify({'error': 'Site plan must be .xlsx or .xls'}), 400
+    if not template_file.filename.lower().endswith('.pptx'):
+        return jsonify({'error': 'Etihad template must be a .pptx'}), 400
 
     try:
-        output_bytes, summary = build_etihad_proposal(vendor.read(), template.read())
-        out = io.BytesIO(output_bytes)
-        out.seek(0)
-        response = send_file(
-            out,
-            as_attachment=True,
-            download_name=f'Etihad_OOH_Proposal_{date.today().isoformat()}.pptx',
-            mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        )
-        response.headers['X-Build-Mode']  = summary['mode']
-        response.headers['X-Build-Sites'] = str(summary['sites'])
-        if summary['warnings']:
-            response.headers['X-Build-Warnings'] = '; '.join(summary['warnings'])[:800]
-        return response
+        sites = _etihad_parse_excel_sites(excel_file.read())
     except Exception as e:
-        print(traceback.format_exc())
-        return str(e), 500
+        return jsonify({'error': str(e)}), 400
+
+    template_bytes = template_file.read()
+    job_id = uuid.uuid4().hex
+    with jobs_lock:
+        jobs[job_id] = {
+            'status':   'building',
+            'message':  f"Found {len(sites)} site(s). Starting…",
+            'progress': 0,
+            'plan':     None,
+            'output':   None,
+        }
+
+    threading.Thread(target=_etihad_build_job, args=(job_id, template_bytes, sites), daemon=True).start()
+    return jsonify({'job_id': job_id, 'site_count': len(sites)})
 
 
 # ---------------------------------------------------------------------------

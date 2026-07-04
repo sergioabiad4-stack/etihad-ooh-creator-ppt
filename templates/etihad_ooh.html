@@ -39,8 +39,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .msg-err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626}
 .msg-ok{background:#dcfce7;border:1px solid #86efac;color:#14532d}
 .msg-warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e}
-.msg-wait{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
 .info-box{background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:14px 16px;font-size:12px;color:#075985;margin-bottom:20px;line-height:1.5}
+.progress-card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:24px;margin-top:20px;display:none}
+.progress-card.show{display:block}
+.progress-phase{font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.spinner{width:13px;height:13px;border:2px solid #e5e5e5;border-top-color:#1f7a3c;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.progress-track{height:8px;background:#e5e5e5;border-radius:99px;overflow:hidden;margin-bottom:10px}
+.progress-fill{height:100%;background:#1f7a3c;border-radius:99px;transition:width .4s ease;width:0%}
+.progress-msg{font-size:12px;color:#6b7280}
+.btn-download{display:inline-flex;align-items:center;gap:7px;padding:11px 28px;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;border:none;background:#1f7a3c;color:#fff;text-decoration:none;margin-top:14px}
+.btn-download:hover{background:#166030}
 @media(max-width:600px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -52,32 +61,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </div>
 <div class="wrap">
   <div class="page-title">Etihad OOH Proposal Deck</div>
-  <p class="page-sub">Upload the vendor PowerPoint (site photos, maps, GPS &amp; data) and the Etihad-branded template — the server merges them into a client-ready deck.</p>
+  <p class="page-sub">Upload the vendor's Excel site plan and the Etihad-branded template — the server fills a slide per site (grouped by market) into a client-ready deck.</p>
 
   <div class="info-box">
-    ℹ️ Works with either an empty 3-slide Etihad template (title + data + divider — the server builds every site slide) or a pre-filled deck that already has "Pictures"/"Map" placeholders (the server only drops in the images). Mode is detected automatically.
+    ℹ️ Expects one header row with <strong>State, Market, Location, Contacts Per Day, Media, Type, Units, W, H, SOV %, Lead Time, Language, Screen Resolution, Screen Loop</strong> columns (blank/subtotal rows are skipped automatically). Since the plan has no vendor photos, each site's "Map" placeholder is filled with a geocoded Google Maps screenshot instead — this means the build can take a few minutes for large plans (one map lookup per site).
   </div>
 
   <div class="grid">
-    <!-- Vendor upload -->
+    <!-- Excel upload -->
     <div class="card">
-      <div class="card-title">Vendor PPT</div>
-      <div class="card-desc">Supplier deck with one slide per site — photos, map screenshot, GPS link, and site details.</div>
-      <div class="drop" id="vendorDrop" onclick="document.getElementById('vendorIn').click()"
-           ondragover="onDrag(event,'vendorDrop',true)" ondragleave="onDrag(event,'vendorDrop',false)" ondrop="onDropVendor(event)">
+      <div class="card-title">Vendor site plan</div>
+      <div class="card-desc">The Excel media plan — one row per site.</div>
+      <div class="drop" id="excelDrop" onclick="document.getElementById('excelIn').click()"
+           ondragover="onDrag(event,'excelDrop',true)" ondragleave="onDrag(event,'excelDrop',false)" ondrop="onDropExcel(event)">
         <span class="badge badge-req">Required</span>
-        <span class="drop-icon">🏙️</span>
+        <span class="drop-icon">📊</span>
         <div class="drop-main">Click or drag &amp; drop</div>
-        <div class="drop-hint">.pptx</div>
-        <div class="drop-name" id="vendorName"></div>
+        <div class="drop-hint">.xlsx / .xls</div>
+        <div class="drop-name" id="excelName"></div>
       </div>
-      <input type="file" id="vendorIn" accept=".pptx" style="display:none" onchange="onVendorIn(event)">
+      <input type="file" id="excelIn" accept=".xlsx,.xls" style="display:none" onchange="onExcelIn(event)">
     </div>
 
     <!-- Template upload -->
     <div class="card">
       <div class="card-title">Etihad template</div>
-      <div class="card-desc">The Etihad-branded deck — blank template or pre-filled "nuclear" version.</div>
+      <div class="card-desc">The Etihad-branded 3-slide deck (title + data + divider).</div>
       <div class="drop" id="tplDrop" onclick="document.getElementById('tplIn').click()"
            ondragover="onDrag(event,'tplDrop',true)" ondragleave="onDrag(event,'tplDrop',false)" ondrop="onDropTpl(event)">
         <span class="badge badge-req">Required</span>
@@ -93,27 +102,40 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <!-- Submit -->
   <div class="action-card">
     <div class="action-info">
-      <strong>Build &amp; download</strong>
+      <strong>Build proposal</strong>
       <span id="readyLabel">Upload both files to continue</span>
     </div>
-    <button class="btn btn-go" id="btnGo" disabled onclick="submit()">⬇ Build proposal deck</button>
+    <button class="btn btn-go" id="btnGo" disabled onclick="submit()">⚡ Build proposal deck</button>
   </div>
-  <div class="msg msg-wait" id="msgWait">⏳ Processing on server — extracting images, filling slides, cleaning metadata…</div>
-  <div class="msg msg-ok"   id="msgOk"></div>
-  <div class="msg msg-warn" id="msgWarn"></div>
   <div class="msg msg-err"  id="msgErr"></div>
+
+  <!-- Progress -->
+  <div class="progress-card" id="progressCard">
+    <div class="progress-phase"><span class="spinner"></span><span id="phaseText">Starting…</span></div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-msg" id="progressMsg"></div>
+    <div class="msg msg-warn" id="msgWarn"></div>
+    <div id="doneBox" style="display:none">
+      <div class="msg msg-ok show" id="msgOk"></div>
+      <a class="btn-download" id="btnDownload" href="#">⬇ Download PPTX</a>
+    </div>
+  </div>
 </div>
 
 <script>
-let vendorFile = null;
+let excelFile = null;
 let tplFile = null;
+let jobId = null;
+let pollTimer = null;
+let netErrors = 0;
+const MAX_NET_ERRORS = 12;
 
-function onVendorIn(e) { if (e.target.files[0]) setVendor(e.target.files[0]); e.target.value=''; }
-function onDropVendor(e) { e.preventDefault(); document.getElementById('vendorDrop').classList.remove('over'); if (e.dataTransfer.files[0]) setVendor(e.dataTransfer.files[0]); }
-function setVendor(f) {
-  vendorFile = f;
-  document.getElementById('vendorDrop').classList.add('has-file');
-  document.getElementById('vendorName').textContent = '✓ ' + f.name;
+function onExcelIn(e) { if (e.target.files[0]) setExcel(e.target.files[0]); e.target.value=''; }
+function onDropExcel(e) { e.preventDefault(); document.getElementById('excelDrop').classList.remove('over'); if (e.dataTransfer.files[0]) setExcel(e.dataTransfer.files[0]); }
+function setExcel(f) {
+  excelFile = f;
+  document.getElementById('excelDrop').classList.add('has-file');
+  document.getElementById('excelName').textContent = '✓ ' + f.name;
   updateReady();
 }
 
@@ -127,11 +149,11 @@ function setTpl(f) {
 }
 
 function updateReady() {
-  const ok = vendorFile && tplFile;
+  const ok = excelFile && tplFile;
   document.getElementById('btnGo').disabled = !ok;
   document.getElementById('readyLabel').textContent =
-    !vendorFile ? 'Upload the vendor PPT to continue' :
-    !tplFile    ? 'Upload the Etihad template to continue' :
+    !excelFile ? 'Upload the vendor site plan to continue' :
+    !tplFile   ? 'Upload the Etihad template to continue' :
     'Both files ready';
 }
 
@@ -139,46 +161,80 @@ async function submit() {
   hideMessages();
   const btn = document.getElementById('btnGo');
   btn.disabled = true;
-  btn.textContent = '⏳ Building…';
-  show('msgWait');
+  btn.textContent = '⏳ Starting…';
+  document.getElementById('progressCard').classList.add('show');
+  document.getElementById('doneBox').style.display = 'none';
+  setProgress(0, 'Uploading files…');
+  setPhase('Uploading…');
 
   const fd = new FormData();
-  fd.append('vendor', vendorFile);
+  fd.append('excel', excelFile);
   fd.append('template', tplFile);
 
   try {
     const res = await fetch('/build-etihad-proposal', { method: 'POST', body: fd });
-    if (!res.ok) {
-      const txt = await res.text();
-      showErr(txt || `Server error ${res.status}`);
-      return;
-    }
-    const blob = await res.blob();
-    const cd = res.headers.get('content-disposition') || '';
-    const m = cd.match(/filename="?([^";]+)"?/);
-    const fname = m ? m[1] : 'Etihad_OOH_Proposal.pptx';
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = fname;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    hide('msgWait');
-
-    const mode = res.headers.get('x-build-mode') || '';
-    const sites = res.headers.get('x-build-sites') || '';
-    const modeLabel = mode === 'A' ? 'full build from template' : mode === 'B' ? 'images inserted into pre-filled deck' : '';
-    show('msgOk', `✅ Downloaded: ${fname}` + (sites ? ` — ${sites} site(s), ${modeLabel}` : ''));
-
-    const warnings = res.headers.get('x-build-warnings');
-    if (warnings) show('msgWarn', '⚠ ' + warnings);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    jobId = data.job_id;
+    setPhase(`Building — ${data.site_count} site(s) found`);
+    poll();
   } catch (err) {
-    showErr('Network error: ' + err.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '⬇ Build proposal deck';
+    showErr('Upload failed: ' + err.message);
+    resetButton();
   }
 }
+
+function poll() {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(async () => {
+    try {
+      const res = await fetch('/api/status/' + jobId);
+      const data = await res.json();
+      netErrors = 0;
+
+      if (data.status === 'building') {
+        setProgress(data.progress, data.message);
+        poll();
+      } else if (data.status === 'done') {
+        setProgress(100, data.message);
+        showDone();
+      } else if (data.status === 'error') {
+        showErr(data.message);
+        resetButton();
+      } else {
+        poll();
+      }
+    } catch (_) {
+      netErrors++;
+      if (netErrors < MAX_NET_ERRORS) {
+        document.getElementById('progressMsg').textContent = 'Reconnecting… (' + netErrors + ')';
+        poll();
+      } else {
+        showErr('Lost connection to server. Please refresh and try again.');
+        resetButton();
+      }
+    }
+  }, netErrors > 0 ? 3000 : 1500);
+}
+
+function showDone() {
+  document.getElementById('btnDownload').href = '/api/download/' + jobId;
+  document.getElementById('msgOk').textContent = '✅ Proposal ready — download below.';
+  document.getElementById('doneBox').style.display = 'block';
+  resetButton();
+}
+
+function resetButton() {
+  const btn = document.getElementById('btnGo');
+  btn.disabled = false;
+  btn.textContent = '⚡ Build proposal deck';
+}
+
+function setProgress(pct, msg) {
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressMsg').textContent = msg || '';
+}
+function setPhase(text) { document.getElementById('phaseText').textContent = text; }
 
 function show(id, text) {
   const el = document.getElementById(id);
@@ -186,8 +242,8 @@ function show(id, text) {
   el.classList.add('show');
 }
 function hide(id) { document.getElementById(id).classList.remove('show'); }
-function hideMessages() { ['msgWait','msgErr','msgOk','msgWarn'].forEach(hide); }
-function showErr(msg) { hide('msgWait'); show('msgErr', '✗ ' + msg); }
+function hideMessages() { ['msgErr','msgOk','msgWarn'].forEach(hide); }
+function showErr(msg) { show('msgErr', '✗ ' + msg); }
 
 function onDrag(e, id, over) {
   e.preventDefault();

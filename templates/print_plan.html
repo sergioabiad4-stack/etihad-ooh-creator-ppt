@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CN Print Plan Filler — Skyscale Media</title>
+<title>Conde Nast Plan Filler — Skyscale Media</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f4f0;color:#1a1a1a;min-height:100vh;font-size:14px}
@@ -11,165 +11,169 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .hd-logo{font-size:17px;font-weight:700;letter-spacing:-0.3px}
 .hd-logo em{color:#a3e635;font-style:normal}
 .hd-sub{font-size:12px;color:#888;margin-left:auto}
-.wrap{max-width:900px;margin:0 auto;padding:36px 20px}
+.wrap{max-width:960px;margin:0 auto;padding:36px 20px}
 .page-title{font-size:22px;font-weight:700;margin-bottom:4px}
-.page-sub{font-size:13px;color:#6b7280;margin-bottom:32px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
-.card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:24px}
+.page-sub{font-size:13px;color:#6b7280;margin-bottom:28px}
+.card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:24px;margin-bottom:20px}
 .card-title{font-size:14px;font-weight:700;margin-bottom:4px}
 .card-desc{font-size:12px;color:#6b7280;margin-bottom:16px}
-.drop{border:2px dashed #d1d5db;border-radius:10px;padding:24px 20px;text-align:center;cursor:pointer;background:#fafafa;transition:all .15s;position:relative}
+.mkts{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.drop{border:2px dashed #d1d5db;border-radius:10px;padding:20px 14px;text-align:center;cursor:pointer;background:#fafafa;transition:all .15s;position:relative}
 .drop:hover,.drop.over{border-color:#0f0f0f;background:#f3f4f6}
 .drop.has-file{border-color:#65a30d;border-style:solid;background:#f7fee7}
-.drop-icon{font-size:24px;margin-bottom:6px;display:block}
-.drop-main{font-size:13px;font-weight:500;color:#374151}
+.drop-flag{display:inline-block;font-size:11px;font-weight:800;letter-spacing:1px;background:#0f0f0f;color:#a3e635;border-radius:6px;padding:3px 9px;margin-bottom:7px}
+.drop.has-file .drop-flag{background:#166534;color:#f7fee7}
+.drop-mkt{font-size:13px;font-weight:700}
 .drop-hint{font-size:11px;color:#9ca3af;margin-top:3px}
-.drop-name{font-size:12px;font-weight:600;color:#166534;margin-top:8px}
-.badge{position:absolute;top:10px;right:10px;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:6px;text-transform:uppercase}
-.badge-opt{background:#f3f4f6;color:#6b7280}
-.badge-req{background:#fef9c3;color:#854d0e}
-.file-list{margin-top:14px;display:flex;flex-direction:column;gap:8px}
-.fi{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e5e5e5;border-radius:9px;padding:9px 12px}
-.fi-name{font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fi-mkt label{font-size:10px;font-weight:600;color:#92400e;white-space:nowrap;margin-right:4px}
-.fi-mkt input{border:1px solid #fde68a;background:#fffbeb;border-radius:5px;padding:4px 7px;font-size:11px;width:72px}
-.fi-del{background:none;border:none;cursor:pointer;color:#9ca3af;font-size:14px;padding:2px 5px;border-radius:4px;line-height:1}
-.fi-del:hover{background:#fee2e2;color:#dc2626}
+.drop-name{font-size:11px;font-weight:600;color:#166534;margin-top:8px;word-break:break-all}
+.drop-clear{position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:#9ca3af;font-size:13px;line-height:1;display:none;padding:3px 6px;border-radius:4px}
+.drop.has-file .drop-clear{display:block}
+.drop-clear:hover{background:#fee2e2;color:#dc2626}
+.hdr-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.hdr-grid label{font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
+.hdr-grid input{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:9px 11px;font-size:13px}
+.hdr-grid input:focus{outline:2px solid #a3e635;border-color:#65a30d}
+.tpl-note{font-size:12px;color:#6b7280;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tpl-note .ok{color:#166534;font-weight:600}
+.tpl-link{color:#2563eb;cursor:pointer;text-decoration:underline;font-size:12px}
 .action-card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
 .action-info strong{font-size:15px;font-weight:700;display:block;margin-bottom:3px}
 .action-info span{font-size:13px;color:#6b7280}
 .btn{display:inline-flex;align-items:center;gap:7px;padding:11px 28px;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:all .15s}
 .btn-go{background:#1f7a3c;color:#fff}
 .btn-go:hover:not(:disabled){background:#166030}
-.btn-go:disabled{opacity:.6;cursor:wait}
-.msg{padding:10px 14px;border-radius:8px;font-size:13px;margin-top:16px;display:none}
+.btn-go:disabled{opacity:.6;cursor:not-allowed}
+.msg{padding:10px 14px;border-radius:8px;font-size:13px;margin-top:16px;display:none;white-space:pre-wrap}
 .msg.show{display:block}
 .msg-err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626}
 .msg-ok{background:#dcfce7;border:1px solid #86efac;color:#14532d}
 .msg-wait{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
-@media(max-width:600px){.grid{grid-template-columns:1fr}}
+@media(max-width:640px){.mkts,.hdr-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="hd">
   <div class="hd-logo">Sky<em>scale</em> Media</div>
   <a href="/" style="color:#bbb;text-decoration:none;font-size:12px">← All tools</a>
-  <div class="hd-sub">Condé Nast Print Plan Filler</div>
+  <div class="hd-sub">Condé Nast Plan Filler</div>
 </div>
 <div class="wrap">
-  <div class="page-title">Condé Nast Print Plan</div>
-  <p class="page-sub">Upload the blank CN template and vendor rate cards — the server fills and returns a properly formatted Excel file.</p>
+  <div class="page-title">Condé Nast Plan Filler</div>
+  <p class="page-sub">Drop the publisher rate cards into their market slot — the server fills the official Skyscale plan template and returns the finished Excel file. Any combination of markets works.</p>
 
-  <div class="grid">
-    <!-- Template upload -->
-    <div class="card">
-      <div class="card-title">Blank CN template</div>
-      <div class="card-desc">The empty <strong>Working_Print Media Plan_Format.xlsx</strong> file.</div>
-      <div class="drop" id="tplDrop" onclick="document.getElementById('tplIn').click()"
-           ondragover="onDrag(event,'tplDrop',true)" ondragleave="onDrag(event,'tplDrop',false)" ondrop="onDropTpl(event)">
-        <span class="badge badge-req">Required</span>
-        <span class="drop-icon">📋</span>
-        <div class="drop-main">Click or drag &amp; drop</div>
-        <div class="drop-hint">.xlsx</div>
-        <div class="drop-name" id="tplName"></div>
-      </div>
-      <input type="file" id="tplIn" accept=".xlsx,.xls" style="display:none" onchange="onTplIn(event)">
-    </div>
+  <div class="card">
+    <div class="card-title">Rate cards</div>
+    <div class="card-desc">One .xlsx per market. Files dropped anywhere are auto-assigned by filename.</div>
+    <div class="mkts" id="mkts"></div>
+  </div>
 
-    <!-- Rate cards upload -->
-    <div class="card">
-      <div class="card-title">Vendor rate cards</div>
-      <div class="card-desc">Upload one or more rate card files. Assign a market label to each.</div>
-      <div class="drop" id="rcDrop" onclick="document.getElementById('rcIn').click()"
-           ondragover="onDrag(event,'rcDrop',true)" ondragleave="onDrag(event,'rcDrop',false)" ondrop="onDropRc(event)">
-        <span class="badge badge-req">Required</span>
-        <span class="drop-icon">📊</span>
-        <div class="drop-main">Click or drag &amp; drop</div>
-        <div class="drop-hint">.xlsx · multiple files</div>
-      </div>
-      <input type="file" id="rcIn" accept=".xlsx,.xls" multiple style="display:none" onchange="onRcIn(event)">
-      <div class="file-list" id="rcList"></div>
+  <div class="card">
+    <div class="card-title">Plan header <span style="font-weight:400;color:#9ca3af">(optional)</span></div>
+    <div class="card-desc">Left blank, these are read from the rate cards where available.</div>
+    <div class="hdr-grid">
+      <div><label for="client">Client</label><input id="client" placeholder="e.g. Rwanda Tourism"></div>
+      <div><label for="campaign">Campaign name</label><input id="campaign" placeholder="e.g. Visit Rwanda 2026"></div>
+      <div><label for="agency">Agency</label><input id="agency" placeholder="e.g. N/A"></div>
+      <div><label for="contact">Contact person</label><input id="contact" placeholder="e.g. Sergio <sergio@skyscalemedia.com>"></div>
     </div>
   </div>
 
-  <!-- Submit -->
+  <div class="card">
+    <div class="tpl-note">
+      <span class="ok" id="tplStatus">✓ Official template bundled — no upload needed</span>
+      <span class="tpl-link" onclick="document.getElementById('tplIn').click()">use a custom template instead</span>
+      <input type="file" id="tplIn" accept=".xlsx" style="display:none" onchange="onTpl(event)">
+    </div>
+  </div>
+
   <div class="action-card">
     <div class="action-info">
       <strong>Fill &amp; download</strong>
-      <span id="readyLabel">Add rate cards to continue</span>
+      <span id="readyLabel">Add at least one rate card to continue</span>
     </div>
     <button class="btn btn-go" id="btnGo" disabled onclick="submit()">⬇ Download filled .xlsx</button>
   </div>
-  <div class="msg msg-wait" id="msgWait">⏳ Processing on server — filling rows, applying styles…</div>
+  <div class="msg msg-wait" id="msgWait">⏳ Filling the plan — extracting placements, resizing sections, rebuilding merges…</div>
   <div class="msg msg-ok"  id="msgOk"></div>
   <div class="msg msg-err" id="msgErr"></div>
 </div>
 
 <script>
+const MARKETS = [
+  { key: 'india', flag: 'IND', name: 'India', hint: 'CNT India rate card' },
+  { key: 'uk',    flag: 'UK',  name: 'CN Traveller UK', hint: 'UK rate card / plan' },
+  { key: 'us',    flag: 'US',  name: 'Conde Nast US',   hint: 'US media plan' },
+];
+const files = { india: null, uk: null, us: null };
 let tplFile = null;
-const rcFiles = []; // {file, market, id}
-let nextId = 0;
 
 function guessMarket(name) {
-  if (/\buk\b/i.test(name)) return 'UK';
-  if (/\bus\b|\busa\b/i.test(name)) return 'USA';
-  if (/\bindia\b/i.test(name)) return 'India';
-  if (/\blatam\b/i.test(name)) return 'LATAM';
-  return '';
+  if (/india|\bin\b|cnt[\s._-]*i/i.test(name)) return 'india';
+  if (/\buk\b|traveller|british/i.test(name)) return 'uk';
+  if (/\bus\b|\busa\b|traveler\b/i.test(name)) return 'us';
+  return null;
 }
 
-// ── Template ──
-function onTplIn(e) { if (e.target.files[0]) setTpl(e.target.files[0]); e.target.value=''; }
-function onDropTpl(e) { e.preventDefault(); document.getElementById('tplDrop').classList.remove('over'); if (e.dataTransfer.files[0]) setTpl(e.dataTransfer.files[0]); }
-function setTpl(f) {
-  tplFile = f;
-  document.getElementById('tplDrop').classList.add('has-file');
-  document.getElementById('tplName').textContent = '✓ ' + f.name;
-  updateReady();
-}
-
-// ── Rate cards ──
-function onRcIn(e) { addFiles(e.target.files); e.target.value=''; }
-function onDropRc(e) { e.preventDefault(); document.getElementById('rcDrop').classList.remove('over'); addFiles(e.dataTransfer.files); }
-function addFiles(files) {
-  for (const f of files) {
-    rcFiles.push({ file: f, market: guessMarket(f.name), id: nextId++ });
-  }
-  renderRcList();
-  updateReady();
-}
-function removeRc(id) {
-  const i = rcFiles.findIndex(x => x.id === id);
-  if (i >= 0) rcFiles.splice(i, 1);
-  renderRcList();
-  updateReady();
-}
-function renderRcList() {
-  const list = document.getElementById('rcList');
-  list.innerHTML = '';
-  document.getElementById('rcDrop').className = 'drop' + (rcFiles.length ? ' has-file' : '');
-  rcFiles.forEach(entry => {
-    const div = document.createElement('div');
-    div.className = 'fi';
-    div.innerHTML = `<span style="font-size:16px">📊</span>
-      <span class="fi-name" title="${entry.file.name}">${entry.file.name}</span>
-      <span class="fi-mkt"><label>Market:</label>
-        <input type="text" value="${entry.market}" placeholder="e.g. UK"
-               oninput="rcFiles.find(x=>x.id===${entry.id}).market=this.value.trim()"></span>
-      <button class="fi-del" onclick="removeRc(${entry.id})">✕</button>`;
-    list.appendChild(div);
+function render() {
+  const box = document.getElementById('mkts');
+  box.innerHTML = '';
+  MARKETS.forEach(m => {
+    const f = files[m.key];
+    const d = document.createElement('div');
+    d.className = 'drop' + (f ? ' has-file' : '');
+    d.ondragover = e => { e.preventDefault(); d.classList.add('over'); };
+    d.ondragleave = () => d.classList.remove('over');
+    d.ondrop = e => { e.preventDefault(); d.classList.remove('over'); onDrop(e.dataTransfer.files, m.key); };
+    d.onclick = e => { if (e.target.className !== 'drop-clear') pick(m.key); };
+    d.innerHTML = `<button class="drop-clear" title="Remove">✕</button>
+      <span class="drop-flag">${m.flag}</span>
+      <div class="drop-mkt">${m.name}</div>
+      <div class="drop-hint">${f ? '' : m.hint + ' — click or drop'}</div>
+      <div class="drop-name">${f ? '✓ ' + f.name : ''}</div>`;
+    d.querySelector('.drop-clear').onclick = e => { e.stopPropagation(); files[m.key] = null; render(); };
+    box.appendChild(d);
   });
-}
-function updateReady() {
-  const ok = tplFile && rcFiles.length > 0;
-  document.getElementById('btnGo').disabled = !ok;
-  document.getElementById('readyLabel').textContent =
-    !tplFile        ? 'Upload the blank CN template to continue' :
-    !rcFiles.length ? 'Add at least one rate card to continue' :
-    `${rcFiles.length} rate card${rcFiles.length>1?'s':''} + template ready`;
+  updateReady();
 }
 
-// ── Submit ──
+function pick(key) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.xlsx,.xls';
+  inp.onchange = () => { if (inp.files[0]) { files[key] = inp.files[0]; render(); } };
+  inp.click();
+}
+
+function onDrop(list, slotKey) {
+  const dropped = [...list].filter(f => /\.xlsx?$/i.test(f.name));
+  if (!dropped.length) return;
+  if (dropped.length === 1) {
+    files[slotKey] = dropped[0];
+  } else {
+    // several files at once — place by filename, fall back to empty slots
+    dropped.forEach(f => {
+      const g = guessMarket(f.name);
+      const target = (g && !files[g]) ? g : MARKETS.map(m => m.key).find(k => !files[k]);
+      if (target) files[target] = f;
+    });
+  }
+  render();
+}
+
+function onTpl(e) {
+  tplFile = e.target.files[0] || null;
+  document.getElementById('tplStatus').textContent =
+    tplFile ? '✓ Custom template: ' + tplFile.name : '✓ Official template bundled — no upload needed';
+  e.target.value = '';
+}
+
+function updateReady() {
+  const picked = MARKETS.filter(m => files[m.key]);
+  document.getElementById('btnGo').disabled = !picked.length;
+  document.getElementById('readyLabel').textContent = picked.length
+    ? 'Filling: ' + picked.map(m => m.name).join(' + ')
+    : 'Add at least one rate card to continue';
+}
+
 async function submit() {
   hideMessages();
   const btn = document.getElementById('btnGo');
@@ -178,28 +182,25 @@ async function submit() {
   show('msgWait');
 
   const fd = new FormData();
+  MARKETS.forEach(m => { if (files[m.key]) fd.append(m.key, files[m.key]); });
   if (tplFile) fd.append('template', tplFile);
-  rcFiles.forEach(entry => {
-    fd.append('rate_cards', entry.file);
-    fd.append('markets', entry.market);
-  });
+  ['client','campaign','agency','contact'].forEach(k =>
+    fd.append(k, document.getElementById(k).value.trim()));
 
   try {
     const res = await fetch('/fill-cn-plan', { method: 'POST', body: fd });
     if (!res.ok) {
-      const txt = await res.text();
-      showErr(txt || `Server error ${res.status}`);
+      showErr(await res.text() || `Server error ${res.status}`);
       return;
     }
     const blob = await res.blob();
     const cd = res.headers.get('content-disposition') || '';
-    const m = cd.match(/filename="?([^";]+)"?/);
-    const fname = m ? m[1] : 'CN_Print_Plan_Filled.xlsx';
+    const m = cd.match(/filename\*?="?([^";]+)"?/);
+    const fname = m ? decodeURIComponent(m[1].replace(/^UTF-8''/, '')) : 'CN_Print_Plan_Filled.xlsx';
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = fname;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a);
+    document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
     hide('msgWait');
     show('msgOk', '✅ Downloaded: ' + fname);
@@ -208,6 +209,7 @@ async function submit() {
   } finally {
     btn.disabled = false;
     btn.textContent = '⬇ Download filled .xlsx';
+    updateReady();
   }
 }
 
@@ -220,10 +222,7 @@ function hide(id) { document.getElementById(id).classList.remove('show'); }
 function hideMessages() { ['msgWait','msgErr','msgOk'].forEach(hide); }
 function showErr(msg) { hide('msgWait'); show('msgErr', '✗ ' + msg); }
 
-function onDrag(e, id, over) {
-  e.preventDefault();
-  document.getElementById(id).classList.toggle('over', over);
-}
+render();
 </script>
 </body>
 </html>
