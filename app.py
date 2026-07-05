@@ -19,6 +19,7 @@ from pptx.util import Inches, Pt
 from pptx.oxml.ns import qn
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
+from pptx.enum.shapes import PP_PLACEHOLDER
 from lxml import etree
 import anthropic
 
@@ -1312,30 +1313,37 @@ def _etihad_append_value(tf, idx: int, value: str, sz: int = 900):
 
 
 def _etihad_fill_data_slide(slide, f: dict):
-    """Fill all text fields on a cloned Etihad data slide from formatted site fields."""
+    """Fill all text fields on a cloned Etihad data slide from formatted site fields.
+
+    Matched by each shape's label text rather than its numeric shape ID —
+    IDs can shift if the template has ever been re-saved/re-exported (e.g.
+    opened once in PowerPoint), but the label text is a stable part of the
+    template's design. Same approach already used for the Pictures/Map
+    placeholders.
+    """
     for sh in slide.shapes:
-        sid = sh.shape_id
         try:
             tf = sh.text_frame
+            full_text = tf.text.strip()
         except Exception:
             continue
 
-        if sid == 138:    # Site title
+        if full_text == 'DIGITALS_01':  # Site title placeholder
             _etihad_set_para(tf, 0, f['title'], sz=2000, color='898989', bold=True)
-        elif sid == 139:  # Location / Visibility / Audience
+        elif full_text.startswith('Location'):  # Location / Visibility / Audience
             _etihad_set_para(tf, 2, f['location'], sz=950)
             _etihad_set_para(tf, 5, f['visibility'], sz=950)
             _etihad_set_para(tf, 7, f['audience'], sz=950)
-        elif sid == 140:  # Size / Period / Nb Units / Spot duration
+        elif full_text.startswith('Size:'):  # Size / Period / Nb Units / Spot duration
             _etihad_append_value(tf, 0, f['size'], sz=950)
             _etihad_append_value(tf, 4, f['units'], sz=950)
             _etihad_append_value(tf, 6, f['spot_duration'], sz=950)
-        elif sid == 141:  # Format / SOV / Traffic / Specs
+        elif full_text.startswith('Format:'):  # Format / SOV / Traffic / Specs
             _etihad_append_value(tf, 0, f['format'], sz=950)
             _etihad_append_value(tf, 2, f['sov'], sz=950)
             _etihad_append_value(tf, 4, f['audience'], sz=950)
             _etihad_append_value(tf, 5, f['size'], sz=950)
-        elif sid == 142:  # Nearby location (no data source — left blank) / Lead Language / Material Deadline
+        elif full_text.startswith('Nearby'):  # Nearby location (no data source — left blank) / Lead Language / Material Deadline
             _etihad_append_value(tf, 3, f['language'], sz=950)
             _etihad_append_value(tf, 5, f['deadline'], sz=950)
 
@@ -1400,7 +1408,13 @@ def _etihad_build_deck(prs: Presentation, sites: list, map_lookup: dict):
     for market in markets_in_order:
         divider = _etihad_clone_slide(prs, 2)
         for sh in divider.shapes:
-            if sh.shape_id in (169, 170, 171):
+            # Identify the divider's title placeholder by its semantic type rather
+            # than shape ID — same fragility concern as _etihad_fill_data_slide.
+            try:
+                is_title = sh.is_placeholder and sh.placeholder_format.type == PP_PLACEHOLDER.TITLE
+            except Exception:
+                is_title = False
+            if is_title:
                 try:
                     _etihad_set_para(sh.text_frame, 0, market.upper(), sz=3600, color='1A1A1A', bold=True)
                     break
