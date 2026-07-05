@@ -623,6 +623,41 @@ def build_pptx_from_plan(job_id: str, pptx_path: Path, plan: list):
 # Plan generation worker
 # ---------------------------------------------------------------------------
 
+def _ensure_site_name_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Some site plans (e.g. Etihad's) use 'Location' as both the site name and
+    the location description. If there's no 'Site Name' column but there is a
+    'Location' column, treat Location's value as the site name too."""
+    if "Site Name" not in df.columns and "Location" in df.columns:
+        df["Site Name"] = df["Location"]
+    return df
+
+
+_EXCEL_HEADER_KEYWORDS = {
+    'site name', 'location', 'market', 'format', 'size',
+    'units/faces', 'spot duration', 'sov/loop', 'impacts',
+}
+
+
+def _detect_excel_header_row(excel_path) -> int:
+    """Find which row holds the real column headers, scanning the first 25 rows.
+
+    Handles plans with a title/client/campaign block above the header (like
+    Etihad's) by requiring at least 2 recognized column names. Falls back to
+    row 0 — pandas' normal default — when nothing better is found, so plain
+    flat-header files behave exactly as before.
+    """
+    import openpyxl as opx
+    wb = opx.load_workbook(excel_path, data_only=True, read_only=True)
+    ws = wb.active
+    for i, row in enumerate(ws.iter_rows(max_row=25, values_only=True)):
+        vals = {str(v).strip().lower() for v in row if v is not None and str(v).strip()}
+        if len(vals & _EXCEL_HEADER_KEYWORDS) >= 2:
+            wb.close()
+            return i
+    wb.close()
+    return 0
+
+
 def generate_plan_job(job_id: str, excel_path: Path):
     """Background job: read Excel + AI/landmarks, produce a content plan."""
     def update(status: str, message: str, progress: int = 0):
@@ -633,12 +668,14 @@ def generate_plan_job(job_id: str, excel_path: Path):
 
     try:
         update("planning", "Reading Excel file…", 5)
-        df = pd.read_excel(excel_path, engine="openpyxl")
+        header_row = _detect_excel_header_row(excel_path)
+        df = pd.read_excel(excel_path, engine="openpyxl", header=header_row)
         df.columns = [c.strip() for c in df.columns]
 
         if "Market" in df.columns:
             df["Market"] = df["Market"].ffill()
 
+        df = _ensure_site_name_column(df)
         if "Site Name" not in df.columns:
             raise ValueError("Excel file must have a 'Site Name' column.")
 
@@ -762,12 +799,14 @@ def process_job(job_id: str, excel_path: Path, pptx_path: Path):
 
     try:
         update("processing", "Reading Excel file…", 5)
-        df = pd.read_excel(excel_path, engine="openpyxl")
+        header_row = _detect_excel_header_row(excel_path)
+        df = pd.read_excel(excel_path, engine="openpyxl", header=header_row)
         df.columns = [c.strip() for c in df.columns]
 
         if "Market" in df.columns:
             df["Market"] = df["Market"].ffill()
 
+        df = _ensure_site_name_column(df)
         if "Site Name" not in df.columns:
             raise ValueError("Excel file must have a 'Site Name' column.")
         df = df[df["Site Name"].notna() & (df["Site Name"].astype(str).str.strip() != "")]
