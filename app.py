@@ -1290,6 +1290,24 @@ def _etihad_clear_runs(p_elem):
         p_elem.remove(b)
 
 
+def _etihad_insert_run(p_elem, run_elem):
+    """Insert a run before the paragraph's endParaRPr, if any.
+
+    OOXML requires <a:p> children in the order pPr?, (r|br|fld)*, endParaRPr? —
+    endParaRPr must come last. Paragraphs that started out empty (a common
+    case for the template's "value" lines) already have an endParaRPr with no
+    preceding run; appending blindly puts the new run after it. lxml/python-
+    pptx write and even re-read that without complaint, but PowerPoint's
+    renderer treats endParaRPr as "nothing meaningful follows" and simply
+    doesn't display anything placed after it.
+    """
+    end_para_rpr = p_elem.find(f'{{{_ETIHAD_NS_A}}}endParaRPr')
+    if end_para_rpr is not None:
+        end_para_rpr.addprevious(run_elem)
+    else:
+        p_elem.append(run_elem)
+
+
 def _etihad_set_para(tf, idx: int, text: str, sz: int = 900, color: str = '1A1A1A', bold: bool = False):
     """Replace paragraph idx content with a single run."""
     try:
@@ -1298,7 +1316,7 @@ def _etihad_set_para(tf, idx: int, text: str, sz: int = 900, color: str = '1A1A1
         return
     _etihad_clear_runs(p)
     if text:
-        p.append(_etihad_make_run(text, sz=sz, color=color, bold=bold))
+        _etihad_insert_run(p, _etihad_make_run(text, sz=sz, color=color, bold=bold))
 
 
 def _etihad_append_value(tf, idx: int, value: str, sz: int = 900):
@@ -1309,7 +1327,7 @@ def _etihad_append_value(tf, idx: int, value: str, sz: int = 900):
         p = tf.paragraphs[idx]._p
     except IndexError:
         return
-    p.append(_etihad_make_run('  ' + value, sz=sz, color='1A1A1A', bold=False))
+    _etihad_insert_run(p, _etihad_make_run('  ' + value, sz=sz, color='1A1A1A', bold=False))
 
 
 def _etihad_fill_data_slide(slide, f: dict):
