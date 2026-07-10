@@ -1241,11 +1241,12 @@ def _etihad_format_site_fields(site: dict) -> dict:
 
     visibility = ', '.join(p for p in (site['media'], site['type'], site['resolution']) if p)
 
-    return {
+    fields = {
         'title':         f"{site['market'].upper()} — SITE {site['sno']:02d}",
         'location':      site['location'][:300],
         'visibility':    visibility[:150],
         'audience':      audience_fmt,
+        'audience_short': audience_fmt,  # kept brief for the "Traffic:" line even if 'audience' becomes AI prose
         'size':          size_fmt,
         'units':         site['units'],
         'spot_duration': spot_duration,
@@ -1254,6 +1255,61 @@ def _etihad_format_site_fields(site: dict) -> dict:
         'language':      site['language'],
         'deadline':      site['lead_time'],
     }
+
+    # AI-generated descriptive copy (see _etihad_generate_ai_content) replaces
+    # the flat single-fact lines above when available.
+    ai = site.get('ai_content') or {}
+    if ai.get('location_desc'):
+        fields['location'] = ai['location_desc']
+    if ai.get('visibility_desc'):
+        fields['visibility'] = ai['visibility_desc']
+    if ai.get('audience_desc'):
+        fields['audience'] = ai['audience_desc']
+
+    return fields
+
+
+def _etihad_generate_ai_content(site: dict, client: anthropic.Anthropic) -> dict:
+    """Ask Claude for 2-3 sentence descriptive copy for Location/Visibility/Audience,
+    instead of the flat single-fact lines built from raw Excel columns directly."""
+    prompt = f"""You are writing punchy, professional copy for an OOH (Out-of-Home) advertising proposal.
+
+Site details:
+- Location: {site['location']}
+- State: {site['state']}
+- Market/City: {site['market']}
+- Media: {site['media']}
+- Screen type: {site['type']}
+- Size: {site['w']} x {site['h']}
+- Screen resolution: {site['resolution']}
+- Contacts per day: {site['audience']}
+- SOV: {site['sov']}%
+- Units: {site['units']}
+
+Return ONLY valid JSON (no markdown fences, no extra text) with exactly these keys:
+
+{{
+  "location_desc": "<2-3 sentences describing where this site is located and its surroundings>",
+  "visibility_desc": "<2-3 sentences about the screen's visibility, format, and viewing conditions>",
+  "audience_desc": "<2-3 sentences about the audience/traffic this site reaches>"
+}}"""
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=500,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = response.content[0].text.strip()
+    raw = re.sub(r"^```[a-z]*\n?", "", raw)
+    raw = re.sub(r"\n?```$", "", raw)
+    text = raw.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        m = re.search(r'\{[\s\S]*\}', text)
+        if m:
+            return json.loads(m.group())
+        raise ValueError(f"AI returned invalid JSON: {text[:200]}")
 
 
 def _etihad_clone_slide(prs: Presentation, idx: int):
@@ -1359,7 +1415,7 @@ def _etihad_fill_data_slide(slide, f: dict):
         elif full_text.startswith('Format:'):  # Format / SOV / Traffic / Specs
             _etihad_append_value(tf, 0, f['format'], sz=950)
             _etihad_append_value(tf, 2, f['sov'], sz=950)
-            _etihad_append_value(tf, 4, f['audience'], sz=950)
+            _etihad_append_value(tf, 4, f['audience_short'], sz=950)
             _etihad_append_value(tf, 5, f['size'], sz=950)
         elif full_text.startswith('Nearby'):  # Nearby location (no data source — left blank) / Lead Language / Material Deadline
             _etihad_append_value(tf, 3, f['language'], sz=950)
@@ -1469,10 +1525,23 @@ def _etihad_build_job(job_id: str, template_bytes: bytes, sites: list):
 
     try:
         total = len(sites)
+
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        ai_client = anthropic.Anthropic(api_key=api_key) if api_key else None
+        if not ai_client:
+            print("[ETIHAD AI] ANTHROPIC_API_KEY not set — skipping AI copy, using raw field values")
+
         map_lookup = {}
         for idx, site in enumerate(sites):
             pct = int((idx / total) * 90)
-            update('building', f"Fetching map {idx + 1}/{total}: {site['location'][:60]}…", pct)
+            update('building', f"Researching {idx + 1}/{total}: {site['location'][:60]}…", pct)
+
+            if ai_client:
+                try:
+                    site['ai_content'] = _etihad_generate_ai_content(site, ai_client)
+                except Exception as e:
+                    print(f"[ETIHAD AI] failed for site {site['sno']} ({site['location']!r}): {e}")
+
             map_bytes = None
             try:
                 map_bytes = get_map_image_bytes(site['location'], site['market'], zoom=16)
