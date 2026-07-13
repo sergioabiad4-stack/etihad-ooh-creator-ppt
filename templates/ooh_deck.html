@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Etihad OOH Proposal Builder — Skyscale Media</title>
+<title>OOH Deck Builder — Skyscale Media</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f4f0;color:#1a1a1a;min-height:100vh;font-size:14px}
@@ -27,6 +27,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .drop-name{font-size:12px;font-weight:600;color:#166534;margin-top:8px}
 .badge{position:absolute;top:10px;right:10px;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:6px;text-transform:uppercase}
 .badge-req{background:#fef9c3;color:#854d0e}
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field label{font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}
+.field input{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px}
+.field input:focus{outline:2px solid #a3e635;border-color:#65a30d}
 .action-card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .action-info strong{font-size:15px;font-weight:700;display:block;margin-bottom:3px}
 .action-info span{font-size:13px;color:#6b7280}
@@ -50,27 +54,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .progress-msg{font-size:12px;color:#6b7280}
 .btn-download{display:inline-flex;align-items:center;gap:7px;padding:11px 28px;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;border:none;background:#1f7a3c;color:#fff;text-decoration:none;margin-top:14px}
 .btn-download:hover{background:#166030}
-@media(max-width:600px){.grid{grid-template-columns:1fr}}
+@media(max-width:600px){.grid{grid-template-columns:1fr}.field-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="hd">
   <div class="hd-logo">Sky<em>scale</em> Media</div>
   <a href="/" style="color:#bbb;text-decoration:none;font-size:12px">← All tools</a>
-  <div class="hd-sub">Etihad OOH Proposal Builder</div>
+  <div class="hd-sub">OOH Deck Builder</div>
 </div>
 <div class="wrap">
-  <div class="page-title">Etihad OOH Proposal Deck</div>
-  <p class="page-sub">Upload the vendor's Excel site plan and the Etihad-branded template — the server fills a slide per site (grouped by market) into a client-ready deck.</p>
+  <div class="page-title">OOH Proposal Deck</div>
+  <p class="page-sub">Upload the Excel site plan and the branded template — the server writes AI-researched copy, real landmarks, and a map screenshot into one filled slide per site.</p>
 
   <div class="info-box">
-    ℹ️ Expects one header row with <strong>State, Market, Location, Contacts Per Day, Media, Type, Units, W, H, SOV %, Lead Time, Language, Screen Resolution, Screen Loop</strong> columns (blank/subtotal rows are skipped automatically). Since the plan has no vendor photos, each site's "Map" placeholder is filled with a geocoded Google Maps screenshot instead, and the Location/Visibility/Audience text is written by AI from the site's data — this means the build can take several minutes for large plans (one AI call plus one map lookup per site).
+    ℹ️ Expects one header row with <strong>State, Market, Location, Contacts Per Day, Media, Type, Units, W, H, SOV %, Lead Time, Language, Screen Resolution, Screen Loop</strong> columns (blank/subtotal rows are skipped automatically). No vendor photos are used — each site's photo placeholder is left blank and the map placeholder gets a geocoded Google Maps screenshot instead. This means the build can take several minutes for large plans (one AI call plus one map lookup plus one landmark lookup per site).
   </div>
 
   <div class="grid">
     <!-- Excel upload -->
     <div class="card">
-      <div class="card-title">Vendor site plan</div>
+      <div class="card-title">Site plan</div>
       <div class="card-desc">The Excel media plan — one row per site.</div>
       <div class="drop" id="excelDrop" onclick="document.getElementById('excelIn').click()"
            ondragover="onDrag(event,'excelDrop',true)" ondragleave="onDrag(event,'excelDrop',false)" ondrop="onDropExcel(event)">
@@ -85,12 +89,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
     <!-- Template upload -->
     <div class="card">
-      <div class="card-title">Etihad template</div>
-      <div class="card-desc">The Etihad-branded 3-slide deck (title + data + divider).</div>
+      <div class="card-title">Deck template</div>
+      <div class="card-desc">The branded cover + site-page template (2 slides).</div>
       <div class="drop" id="tplDrop" onclick="document.getElementById('tplIn').click()"
            ondragover="onDrag(event,'tplDrop',true)" ondragleave="onDrag(event,'tplDrop',false)" ondrop="onDropTpl(event)">
         <span class="badge badge-req">Required</span>
-        <span class="drop-icon">✈️</span>
+        <span class="drop-icon">🖼️</span>
         <div class="drop-main">Click or drag &amp; drop</div>
         <div class="drop-hint">.pptx</div>
         <div class="drop-name" id="tplName"></div>
@@ -99,11 +103,34 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
   </div>
 
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Client &amp; campaign details</div>
+    <div class="card-desc">Used to fill the cover slide and personalize the "Why this Site" copy.</div>
+    <div class="field-grid">
+      <div class="field">
+        <label for="clientName">Client name *</label>
+        <input id="clientName" placeholder="e.g. Etihad Airways">
+      </div>
+      <div class="field">
+        <label for="campaignSubtitle">Campaign subtitle</label>
+        <input id="campaignSubtitle" placeholder="e.g. US Out-Of-Home campaign">
+      </div>
+      <div class="field">
+        <label for="campaignName">Campaign name</label>
+        <input id="campaignName" placeholder="e.g. Beyond Borders Campaign">
+      </div>
+      <div class="field">
+        <label for="duration">Duration</label>
+        <input id="duration" placeholder="e.g. Duration: July 7 - August 7 2026">
+      </div>
+    </div>
+  </div>
+
   <!-- Submit -->
   <div class="action-card">
     <div class="action-info">
       <strong>Build proposal</strong>
-      <span id="readyLabel">Upload both files to continue</span>
+      <span id="readyLabel">Upload both files and enter a client name to continue</span>
     </div>
     <button class="btn btn-go" id="btnGo" disabled onclick="submit()">⚡ Build proposal deck</button>
   </div>
@@ -148,13 +175,17 @@ function setTpl(f) {
   updateReady();
 }
 
+document.getElementById('clientName').addEventListener('input', updateReady);
+
 function updateReady() {
-  const ok = excelFile && tplFile;
+  const client = document.getElementById('clientName').value.trim();
+  const ok = excelFile && tplFile && client;
   document.getElementById('btnGo').disabled = !ok;
   document.getElementById('readyLabel').textContent =
-    !excelFile ? 'Upload the vendor site plan to continue' :
-    !tplFile   ? 'Upload the Etihad template to continue' :
-    'Both files ready';
+    !excelFile ? 'Upload the site plan to continue' :
+    !tplFile   ? 'Upload the deck template to continue' :
+    !client    ? 'Enter a client name to continue' :
+    'Ready to build';
 }
 
 async function submit() {
@@ -170,9 +201,13 @@ async function submit() {
   const fd = new FormData();
   fd.append('excel', excelFile);
   fd.append('template', tplFile);
+  fd.append('client_name', document.getElementById('clientName').value.trim());
+  fd.append('campaign_subtitle', document.getElementById('campaignSubtitle').value.trim());
+  fd.append('campaign_name', document.getElementById('campaignName').value.trim());
+  fd.append('duration', document.getElementById('duration').value.trim());
 
   try {
-    const res = await fetch('/build-etihad-proposal', { method: 'POST', body: fd });
+    const res = await fetch('/build-ooh-deck', { method: 'POST', body: fd });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     jobId = data.job_id;

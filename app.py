@@ -15,11 +15,8 @@ import requests
 from flask import Flask, request, jsonify, send_file, render_template
 import pandas as pd
 from pptx import Presentation
-from pptx.util import Inches, Pt
+from pptx.util import Inches
 from pptx.oxml.ns import qn
-from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
-from pptx.enum.shapes import PP_PLACEHOLDER
 from lxml import etree
 import anthropic
 
@@ -1112,16 +1109,13 @@ def fill_cn_plan():
 # the build runs as a background job polled via the existing /api/status and
 # /api/download endpoints rather than a single synchronous request.
 
-_ETIHAD_NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
-_ETIHAD_NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
-_ETIHAD_REL_HYPERLINK = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink'
-_ETIHAD_LINK_H = 324000   # EMU height of the "View on Google Maps" text box
-_ETIHAD_GAP    = 36000    # EMU gap between map image and hyperlink text box
+_OOH_NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+_OOH_NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 
 # Header text -> internal field name. Matched case-insensitively against the
 # Excel's header row, wherever that row happens to land (there's a Date/
 # Client/Campaign block above it).
-_ETIHAD_HEADER_KEYWORDS = {
+_OOH_HEADER_KEYWORDS = {
     'sno':        ['s. no.', 's.no.', 's no', 'sno'],
     'state':      ['state'],
     'market':     ['market'],
@@ -1140,10 +1134,10 @@ _ETIHAD_HEADER_KEYWORDS = {
 }
 # These columns get merged across multi-row site clusters in the source sheet
 # (e.g. two screens at the same address) — blank cells inherit the last value.
-_ETIHAD_FORWARD_FILL_FIELDS = ('state', 'market', 'location', 'audience', 'sov')
+_OOH_FORWARD_FILL_FIELDS = ('state', 'market', 'location', 'audience', 'sov')
 
 
-def _etihad_find_header_row(rows: list) -> int:
+def _ooh_find_header_row(rows: list) -> int:
     for i, row in enumerate(rows[:20]):
         vals = {str(v).strip().lower() for v in row if v is not None and str(v).strip()}
         if 'location' in vals and 'market' in vals:
@@ -1151,7 +1145,7 @@ def _etihad_find_header_row(rows: list) -> int:
     raise ValueError("Could not find the header row (expected 'Location' and 'Market' columns) in the Excel file.")
 
 
-def _etihad_parse_excel_sites(excel_bytes: bytes) -> list:
+def _ooh_parse_excel_sites(excel_bytes: bytes) -> list:
     """Parse the vendor media-plan Excel into a flat list of site dicts, one per data row."""
     import openpyxl as opx
     wb = opx.load_workbook(io.BytesIO(excel_bytes), data_only=True)
@@ -1160,11 +1154,11 @@ def _etihad_parse_excel_sites(excel_bytes: bytes) -> list:
     if not raw:
         raise ValueError("The Excel file is empty.")
 
-    hdr_idx = _etihad_find_header_row(raw)
+    hdr_idx = _ooh_find_header_row(raw)
     headers = [str(h).strip().lower() if h is not None else '' for h in raw[hdr_idx]]
 
     field_col = {}
-    for field, keywords in _ETIHAD_HEADER_KEYWORDS.items():
+    for field, keywords in _OOH_HEADER_KEYWORDS.items():
         for ci, h in enumerate(headers):
             if h in keywords:
                 field_col[field] = ci
@@ -1180,7 +1174,7 @@ def _etihad_parse_excel_sites(excel_bytes: bytes) -> list:
         return str(row[ci]).strip()
 
     sites = []
-    last = {f: '' for f in _ETIHAD_FORWARD_FILL_FIELDS}
+    last = {f: '' for f in _OOH_FORWARD_FILL_FIELDS}
     sno_counter = 0
 
     for row in raw[hdr_idx + 1:]:
@@ -1188,7 +1182,7 @@ def _etihad_parse_excel_sites(excel_bytes: bytes) -> list:
             continue  # blank separator row or a "<City> Total" subtotal row — neither has a serial number
 
         values = {}
-        for field in _ETIHAD_FORWARD_FILL_FIELDS:
+        for field in _OOH_FORWARD_FILL_FIELDS:
             v = cell(row, field)
             values[field] = v or last[field]
             last[field] = values[field]
@@ -1217,20 +1211,20 @@ def _etihad_parse_excel_sites(excel_bytes: bytes) -> list:
     return sites
 
 
-def _etihad_format_site_fields(site: dict) -> dict:
-    """Derive the display strings that go on the Etihad slide from raw Excel fields."""
+def _ooh_format_site_fields(site: dict) -> dict:
+    """Derive the plain-fact display strings (Format/Size/Units/etc.) from raw Excel fields."""
     audience_digits = site['audience'].replace(',', '')
     try:
-        audience_fmt = f"{int(float(audience_digits)):,} daily contacts" if audience_digits else ''
+        audience_fmt = f"{int(float(audience_digits)):,} daily" if audience_digits else ''
     except ValueError:
         audience_fmt = site['audience']
 
-    size_fmt = f"{site['w']} x {site['h']} ft" if site['w'] and site['h'] else ''
+    size_fmt = f"{site['w']} x {site['h']}" if site['w'] and site['h'] else ''
 
     sov_fmt = ''
     if site['sov']:
         try:
-            sov_fmt = f"{float(site['sov']):.1f}% SOV"
+            sov_fmt = f"{float(site['sov']):.1f}%"
         except ValueError:
             sov_fmt = site['sov']
 
@@ -1239,40 +1233,28 @@ def _etihad_format_site_fields(site: dict) -> dict:
     if m:
         spot_duration = m.group(1) + ' seconds'
 
-    visibility = ', '.join(p for p in (site['media'], site['type'], site['resolution']) if p)
+    visibility_fallback = ', '.join(p for p in (site['media'], site['type'], site['resolution']) if p)
 
-    fields = {
-        'title':         f"{site['market'].upper()} — SITE {site['sno']:02d}",
-        'location':      site['location'][:300],
-        'visibility':    visibility[:150],
-        'audience':      audience_fmt,
-        'audience_short': audience_fmt,  # kept brief for the "Traffic:" line even if 'audience' becomes AI prose
+    return {
+        'format':        site['type'] or site['media'],
         'size':          size_fmt,
         'units':         site['units'],
         'spot_duration': spot_duration,
-        'format':        site['type'] or site['media'],
         'sov':           sov_fmt,
-        'language':      site['language'],
-        'deadline':      site['lead_time'],
+        'traffic':       audience_fmt,
+        # Fallbacks used only if AI content is unavailable (no API key, or the call failed).
+        'site_name_fallback':   site['location'][:60],
+        'location_fallback':    site['location'],
+        'visibility_fallback':  visibility_fallback,
+        'audience_fallback':    audience_fmt,
     }
 
-    # AI-generated descriptive copy (see _etihad_generate_ai_content) replaces
-    # the flat single-fact lines above when available.
-    ai = site.get('ai_content') or {}
-    if ai.get('location_desc'):
-        fields['location'] = ai['location_desc']
-    if ai.get('visibility_desc'):
-        fields['visibility'] = ai['visibility_desc']
-    if ai.get('audience_desc'):
-        fields['audience'] = ai['audience_desc']
 
-    return fields
-
-
-def _etihad_generate_ai_content(site: dict, client: anthropic.Anthropic) -> dict:
-    """Ask Claude for 2-3 sentence descriptive copy for Location/Visibility/Audience,
-    instead of the flat single-fact lines built from raw Excel columns directly."""
-    prompt = f"""You are writing punchy, professional copy for an OOH (Out-of-Home) advertising proposal.
+def _ooh_generate_ai_content(site: dict, client_name: str, ai_client: anthropic.Anthropic) -> dict:
+    """Ask Claude for the site's display name/nickname, 2-3 sentence descriptive
+    copy for Location/Visibility/Audience, and a one-line "why this site" pitch
+    tailored to the client."""
+    prompt = f"""You are writing punchy, professional copy for an OOH (Out-of-Home) advertising strategy proposal for the client "{client_name}".
 
 Site details:
 - Location: {site['location']}
@@ -1289,14 +1271,17 @@ Site details:
 Return ONLY valid JSON (no markdown fences, no extra text) with exactly these keys:
 
 {{
+  "site_name": "<a short, clean display name for this site, 2-6 words, e.g. 'One Times Square'>",
+  "site_nickname": "<a short, catchy 2-5 word descriptor/nickname for this specific site, e.g. 'The Ball Drop Tower'>",
   "location_desc": "<2-3 sentences describing where this site is located and its surroundings>",
   "visibility_desc": "<2-3 sentences about the screen's visibility, format, and viewing conditions>",
-  "audience_desc": "<2-3 sentences about the audience/traffic this site reaches>"
+  "audience_desc": "<2-3 sentences about the audience/traffic this site reaches>",
+  "why_this_site": "<1-2 sentences on why this specific site is a strong fit for {client_name}>"
 }}"""
 
-    response = client.messages.create(
+    response = ai_client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=500,
+        max_tokens=600,
         messages=[{"role": "user", "content": prompt}],
     )
     raw = response.content[0].text.strip()
@@ -1312,211 +1297,220 @@ Return ONLY valid JSON (no markdown fences, no extra text) with exactly these ke
         raise ValueError(f"AI returned invalid JSON: {text[:200]}")
 
 
-def _etihad_clone_slide(prs: Presentation, idx: int):
+def _ooh_clone_slide(prs: Presentation, idx: int):
+    """Clone slide idx, preserving any embedded images (e.g. the Skyscale logo)
+    by re-relating each image part to the new slide and remapping r:embed/
+    r:link IDs in the copied shape XML — a freshly-created relationship isn't
+    guaranteed to get the same ID as the original, so a naive deep-copy of
+    the shape tree leaves dangling references that show up as broken/missing
+    images in PowerPoint even though the file opens without error."""
     tpl = prs.slides[idx]
     new = prs.slides.add_slide(tpl.slide_layout)
-    sp = new.shapes._spTree
-    sp.clear()
-    for el in tpl.shapes._spTree:
-        sp.append(copy.deepcopy(el))
-    return new
 
-
-def _etihad_make_run(text: str, sz: int = 900, color: str = '1A1A1A', bold: bool = False):
-    rPr = etree.Element(f'{{{_ETIHAD_NS_A}}}rPr', attrib={'lang': 'en-US', 'dirty': '0'})
-    if bold:
-        rPr.set('b', '1')
-    rPr.set('sz', str(sz))
-    sf = etree.SubElement(rPr, f'{{{_ETIHAD_NS_A}}}solidFill')
-    sc = etree.SubElement(sf, f'{{{_ETIHAD_NS_A}}}srgbClr')
-    sc.set('val', color)
-    lt = etree.SubElement(rPr, f'{{{_ETIHAD_NS_A}}}latin')
-    lt.set('typeface', 'Calibri')
-    r = etree.Element(f'{{{_ETIHAD_NS_A}}}r')
-    r.insert(0, rPr)
-    t = etree.SubElement(r, f'{{{_ETIHAD_NS_A}}}t')
-    t.text = text
-    return r
-
-
-def _etihad_clear_runs(p_elem):
-    for r in list(p_elem.findall(f'{{{_ETIHAD_NS_A}}}r')):
-        p_elem.remove(r)
-    for b in list(p_elem.findall(f'{{{_ETIHAD_NS_A}}}br')):
-        p_elem.remove(b)
-
-
-def _etihad_insert_run(p_elem, run_elem):
-    """Insert a run before the paragraph's endParaRPr, if any.
-
-    OOXML requires <a:p> children in the order pPr?, (r|br|fld)*, endParaRPr? —
-    endParaRPr must come last. Paragraphs that started out empty (a common
-    case for the template's "value" lines) already have an endParaRPr with no
-    preceding run; appending blindly puts the new run after it. lxml/python-
-    pptx write and even re-read that without complaint, but PowerPoint's
-    renderer treats endParaRPr as "nothing meaningful follows" and simply
-    doesn't display anything placed after it.
-    """
-    end_para_rpr = p_elem.find(f'{{{_ETIHAD_NS_A}}}endParaRPr')
-    if end_para_rpr is not None:
-        end_para_rpr.addprevious(run_elem)
-    else:
-        p_elem.append(run_elem)
-
-
-def _etihad_set_para(tf, idx: int, text: str, sz: int = 900, color: str = '1A1A1A', bold: bool = False):
-    """Replace paragraph idx content with a single run."""
-    try:
-        p = tf.paragraphs[idx]._p
-    except IndexError:
-        return
-    _etihad_clear_runs(p)
-    if text:
-        _etihad_insert_run(p, _etihad_make_run(text, sz=sz, color=color, bold=bold))
-
-
-def _etihad_append_value(tf, idx: int, value: str, sz: int = 900):
-    """Append a dark value run to paragraph idx, keeping existing label runs."""
-    if not value or not str(value).strip():
-        return
-    try:
-        p = tf.paragraphs[idx]._p
-    except IndexError:
-        return
-    _etihad_insert_run(p, _etihad_make_run('  ' + value, sz=sz, color='1A1A1A', bold=False))
-
-
-def _etihad_fill_data_slide(slide, f: dict):
-    """Fill all text fields on a cloned Etihad data slide from formatted site fields.
-
-    Matched by each shape's label text rather than its numeric shape ID —
-    IDs can shift if the template has ever been re-saved/re-exported (e.g.
-    opened once in PowerPoint), but the label text is a stable part of the
-    template's design. Same approach already used for the Pictures/Map
-    placeholders.
-    """
-    for sh in slide.shapes:
-        try:
-            tf = sh.text_frame
-            full_text = tf.text.strip()
-        except Exception:
-            continue
-
-        if full_text == 'DIGITALS_01':  # Site title placeholder
-            _etihad_set_para(tf, 0, f['title'], sz=2000, color='898989', bold=True)
-        elif full_text.startswith('Location'):  # Location / Visibility / Audience
-            _etihad_set_para(tf, 2, f['location'], sz=950)
-            _etihad_set_para(tf, 5, f['visibility'], sz=950)
-            _etihad_set_para(tf, 7, f['audience'], sz=950)
-        elif full_text.startswith('Size:'):  # Size / Period / Nb Units / Spot duration
-            _etihad_append_value(tf, 0, f['size'], sz=950)
-            _etihad_append_value(tf, 4, f['units'], sz=950)
-            _etihad_append_value(tf, 6, f['spot_duration'], sz=950)
-        elif full_text.startswith('Format:'):  # Format / SOV / Traffic / Specs
-            _etihad_append_value(tf, 0, f['format'], sz=950)
-            _etihad_append_value(tf, 2, f['sov'], sz=950)
-            _etihad_append_value(tf, 4, f['audience_short'], sz=950)
-            _etihad_append_value(tf, 5, f['size'], sz=950)
-        elif full_text.startswith('Nearby'):  # Nearby location (no data source — left blank) / Lead Language / Material Deadline
-            _etihad_append_value(tf, 3, f['language'], sz=950)
-            _etihad_append_value(tf, 5, f['deadline'], sz=950)
-
-
-def _etihad_insert_map_with_link(slide, map_stream, ML, MT, MW, MH, maps_url: str):
-    """Insert map image, leaving room below for a 'View on Google Maps' hyperlink."""
-    ih = MH - _ETIHAD_LINK_H - _ETIHAD_GAP
-    slide.shapes.add_picture(map_stream, ML, MT, MW, ih)
-
-    tb = slide.shapes.add_textbox(ML, MT + ih + _ETIHAD_GAP, MW, _ETIHAD_LINK_H)
-    tf2 = tb.text_frame
-    tf2.word_wrap = False
-    p = tf2.paragraphs[0]
-    p.alignment = PP_ALIGN.CENTER
-    run = p.add_run()
-    run.text = '📍 View on Google Maps'
-    run.font.size = Pt(8)
-    run.font.color.rgb = RGBColor(0x3B, 0x7D, 0xC4)
-    run.font.underline = True
-
-    if maps_url:
-        rId = slide.part.relate_to(maps_url, _ETIHAD_REL_HYPERLINK, is_external=True)
-        rPr = run._r.get_or_add_rPr()
-        hl = etree.SubElement(rPr, f'{{{_ETIHAD_NS_A}}}hlinkClick')
-        hl.set(f'{{{_ETIHAD_NS_R}}}id', rId)
-
-
-def _etihad_insert_map_only(slide, map_bytes: bytes | None, maps_url: str):
-    """Drop the 'Pictures' placeholder (no vendor photo available) and fill 'Map' with a geocoded screenshot."""
-    pics_sh = map_sh = None
-    ML = MT = MW = MH = None
-
-    for sh in slide.shapes:
-        try:
-            txt = sh.text_frame.text.strip()
-        except Exception:
-            continue
-        if txt == 'Pictures':
-            pics_sh = sh
-        elif txt in ('Map', 'Map '):
-            map_sh = sh
-            ML, MT, MW, MH = sh.left, sh.top, sh.width, sh.height
-
-    spt = slide.shapes._spTree
-    if pics_sh is not None:
-        spt.remove(pics_sh._element)
-    if map_sh is not None:
-        spt.remove(map_sh._element)
-        if map_bytes:
-            _etihad_insert_map_with_link(slide, io.BytesIO(map_bytes), ML, MT, MW, MH, maps_url)
-
-
-def _etihad_maps_search_url(location: str, market: str) -> str:
-    from urllib.parse import quote
-    return f"https://www.google.com/maps/search/?api=1&query={quote(f'{location}, {market}')}"
-
-
-def _etihad_build_deck(prs: Presentation, sites: list, map_lookup: dict):
-    """Clone the data template slide once per site and a divider slide once per market."""
-    markets_in_order = list(dict.fromkeys(s['market'] for s in sites))
-
-    for market in markets_in_order:
-        divider = _etihad_clone_slide(prs, 2)
-        for sh in divider.shapes:
-            # Identify the divider's title placeholder by its semantic type rather
-            # than shape ID — same fragility concern as _etihad_fill_data_slide.
+    rId_map = {}
+    for rel_id, rel in tpl.part.rels.items():
+        if 'image' in rel.reltype:
             try:
-                is_title = sh.is_placeholder and sh.placeholder_format.type == PP_PLACEHOLDER.TITLE
-            except Exception:
-                is_title = False
-            if is_title:
-                try:
-                    _etihad_set_para(sh.text_frame, 0, market.upper(), sz=3600, color='1A1A1A', bold=True)
-                    break
-                except Exception:
-                    pass
-
-        for site in (s for s in sites if s['market'] == market):
-            slide = _etihad_clone_slide(prs, 1)
-            _etihad_fill_data_slide(slide, _etihad_format_site_fields(site))
-            map_bytes, maps_url = map_lookup.get(site['sno'], (None, ''))
-            _etihad_insert_map_only(slide, map_bytes, maps_url)
-
-    # Remove the original template slides 1 & 2, keep the title slide (0)
-    sll = prs.slides._sldIdLst
-    pp = prs.part
-    for idx in [2, 1]:
-        elem = list(sll)[idx]
-        rId = elem.get(f'{{{_ETIHAD_NS_R}}}id')
-        sll.remove(elem)
-        if rId:
-            try:
-                pp._rels.pop(rId)
+                new_rId = new.part.relate_to(rel.target_part, rel.reltype)
+                if new_rId != rel_id:
+                    rId_map[rel_id] = new_rId
             except Exception:
                 pass
 
+    xml = etree.tostring(tpl.shapes._spTree, encoding='unicode')
+    for old_id, new_id in rId_map.items():
+        xml = xml.replace(f'r:embed="{old_id}"', f'r:embed="{new_id}"')
+        xml = xml.replace(f'r:link="{old_id}"', f'r:link="{new_id}"')
 
-def _etihad_build_job(job_id: str, template_bytes: bytes, sites: list):
-    """Background job: fetch a map screenshot per site, then assemble the deck."""
+    new_tree = new.shapes._spTree
+    for child in list(new_tree):
+        new_tree.remove(child)
+    for child in etree.fromstring(xml):
+        new_tree.append(copy.deepcopy(child))
+
+    return new
+
+
+def _ooh_shape_text(shape) -> str:
+    try:
+        return shape.text_frame.text.strip()
+    except Exception:
+        return ''
+
+
+def _ooh_set_shape_text(shape, text: str):
+    """Replace a shape's visible text, preserving its first run's existing
+    formatting (font/size/color) instead of rebuilding a run from scratch —
+    this template's shapes are one label/value per shape with real design
+    styling already applied, unlike the multi-paragraph Etihad template."""
+    tf = shape.text_frame
+    paras = tf.paragraphs
+    if not paras:
+        return
+    p0 = paras[0]
+    if p0.runs:
+        p0.runs[0].text = text
+        for extra_run in p0.runs[1:]:
+            extra_run.text = ''
+    else:
+        p0.text = text
+    # Drop any extra (typically empty) trailing paragraphs so nothing stray remains.
+    for extra_p in list(paras[1:]):
+        el = extra_p._p
+        parent = el.getparent()
+        if parent is not None:
+            parent.remove(el)
+
+
+def _ooh_has_blip_fill(shape) -> bool:
+    """True if this shape's fill is a picture (blipFill) — used to find the
+    photo/map placeholders, which are custom-geometry shapes with an image
+    fill rather than plain <p:pic> elements (typical of a Canva export)."""
+    try:
+        spPr = shape._element.spPr
+    except Exception:
+        return False
+    if spPr is None:
+        return False
+    return spPr.find(qn('a:blipFill')) is not None
+
+
+_OOH_STATIC_LABELS = {'LOCATION', 'VISIBILITY', 'AUDIENCE', 'TECHNICAL SPECIFICATIONS', 'NEARBY LANDMARKS'}
+_OOH_PREFIXED_FIELDS = [
+    ('FORMAT :', 'format'),
+    ('SIZE :', 'size'),
+    ('UNITS :', 'units'),
+    ('SPOT LENGTH :', 'spot_duration'),
+    ('FREQUENCY :', 'sov'),
+    ('TRAFFIC :', 'traffic'),
+]
+
+
+def _ooh_fill_cover_slide(slide, client_name: str, campaign_subtitle: str, campaign_name: str, duration: str):
+    """Fill the cover slide's 4 text shapes, identified by sorting them by
+    vertical position (client name, subtitle, campaign name, duration — in
+    that reading order, verified against the actual template file)."""
+    candidates = [sh for sh in slide.shapes if _ooh_shape_text(sh)]
+    candidates.sort(key=lambda sh: sh.top)
+    values = [client_name, campaign_subtitle, campaign_name, duration]
+    for sh, value in zip(candidates, values):
+        _ooh_set_shape_text(sh, value)
+
+
+def _ooh_fill_site_slide(slide, fields: dict, ai: dict, client_name: str, map_bytes: bytes | None, landmarks: list):
+    """Fill a cloned site-page slide.
+
+    Labels (LOCATION/VISIBILITY/AUDIENCE/etc.) and prefixed fact lines
+    (FORMAT :/SIZE :/etc.) are matched by their own stable text. The title,
+    subtitle, four AI-prose values (why-this-site, location, visibility,
+    audience) and three landmark lines have no stable per-field marker of
+    their own — matched instead by sorting them by position, which reliably
+    reproduces the template's label/value layout (verified against the
+    actual template file's real coordinates).
+    """
+    photo_shape = map_shape = None
+    left_column = []   # title + subtitle candidates
+    leftover = []      # why-this-site / location / visibility / audience / 3 landmarks
+
+    for sh in slide.shapes:
+        if _ooh_has_blip_fill(sh):
+            if sh.width > 8_000_000 and sh.left < 1_000_000:
+                if sh.top < 4_000_000:
+                    photo_shape = sh
+                else:
+                    map_shape = sh
+            continue
+
+        text = _ooh_shape_text(sh)
+        if not text:
+            continue
+        upper = text.upper()
+
+        if upper in _OOH_STATIC_LABELS:
+            continue  # static label, no per-site change needed
+
+        if upper.startswith('WHY THIS SITE FOR'):
+            _ooh_set_shape_text(sh, f"Why this Site for {client_name}")
+            continue
+
+        matched = False
+        for prefix, field in _OOH_PREFIXED_FIELDS:
+            if upper.startswith(prefix):
+                _ooh_set_shape_text(sh, f"{prefix} {fields.get(field, '')}".strip())
+                matched = True
+                break
+        if matched:
+            continue
+
+        if sh.left < 1_000_000:
+            left_column.append(sh)
+        else:
+            leftover.append(sh)
+
+    left_column.sort(key=lambda sh: sh.top)
+    if len(left_column) >= 1:
+        _ooh_set_shape_text(left_column[0], ai.get('site_name') or fields.get('site_name_fallback', ''))
+    if len(left_column) >= 2:
+        nickname = ai.get('site_nickname', '')
+        market = fields.get('market', '')
+        _ooh_set_shape_text(left_column[1], f"{market.upper()}  |  {nickname}" if nickname else market.upper())
+
+    leftover.sort(key=lambda sh: sh.top)
+    prose_values = [
+        ai.get('why_this_site') or f"A strong fit for {client_name}'s target audience.",
+        ai.get('location_desc') or fields.get('location_fallback', ''),
+        ai.get('visibility_desc') or fields.get('visibility_fallback', ''),
+        ai.get('audience_desc') or fields.get('audience_fallback', ''),
+    ]
+    for sh, value in zip(leftover[:4], prose_values):
+        _ooh_set_shape_text(sh, value)
+    for sh, value in zip(leftover[4:7], (landmarks + ['', '', ''])[:3]):
+        _ooh_set_shape_text(sh, value)
+
+    spt = slide.shapes._spTree
+    if photo_shape is not None:
+        spt.remove(photo_shape._element)  # no vendor photo available — leave blank
+    if map_shape is not None:
+        ML, MT, MW, MH = map_shape.left, map_shape.top, map_shape.width, map_shape.height
+        spt.remove(map_shape._element)
+        if map_bytes:
+            slide.shapes.add_picture(io.BytesIO(map_bytes), ML, MT, MW, MH)
+
+
+def _ooh_build_deck(prs: Presentation, sites: list, client_name: str, campaign_subtitle: str,
+                     campaign_name: str, duration: str, per_site: dict):
+    """Fill the cover slide (idx 0) in place, clone the site slide (idx 1) once
+    per site, then remove the original site-template slide."""
+    _ooh_fill_cover_slide(prs.slides[0], client_name, campaign_subtitle, campaign_name, duration)
+
+    for site in sites:
+        slide = _ooh_clone_slide(prs, 1)
+        data = per_site.get(site['sno'], {})
+        _ooh_fill_site_slide(
+            slide,
+            {**_ooh_format_site_fields(site), 'market': site['market']},
+            data.get('ai_content') or {},
+            client_name,
+            data.get('map_bytes'),
+            data.get('landmarks') or [],
+        )
+
+    # Remove the original site-template slide (idx 1) now that every site has its own clone.
+    sll = prs.slides._sldIdLst
+    pp = prs.part
+    elem = list(sll)[1]
+    rId = elem.get(f'{{{_OOH_NS_R}}}id')
+    sll.remove(elem)
+    if rId:
+        try:
+            pp._rels.pop(rId)
+        except Exception:
+            pass
+
+
+def _ooh_build_job(job_id: str, template_bytes: bytes, sites: list, client_name: str,
+                    campaign_subtitle: str, campaign_name: str, duration: str):
+    """Background job: AI copy + real landmarks + a map screenshot per site, then assemble the deck."""
     def update(status, message, progress=0):
         with jobs_lock:
             jobs[job_id]['status'] = status
@@ -1529,20 +1523,26 @@ def _etihad_build_job(job_id: str, template_bytes: bytes, sites: list):
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         ai_client = anthropic.Anthropic(api_key=api_key) if api_key else None
         if not ai_client:
-            print("[ETIHAD AI] ANTHROPIC_API_KEY not set — skipping AI copy, using raw field values")
+            print("[OOH DECK AI] ANTHROPIC_API_KEY not set — skipping AI copy, using raw field values")
 
-        map_lookup = {}
+        per_site = {}
         for idx, site in enumerate(sites):
             pct = int((idx / total) * 90)
             update('building', f"Researching {idx + 1}/{total}: {site['location'][:60]}…", pct)
 
+            data = {}
             if ai_client:
                 try:
-                    site['ai_content'] = _etihad_generate_ai_content(site, ai_client)
+                    data['ai_content'] = _ooh_generate_ai_content(site, client_name, ai_client)
                 except Exception as e:
-                    print(f"[ETIHAD AI] failed for site {site['sno']} ({site['location']!r}): {e}")
+                    print(f"[OOH DECK AI] failed for site {site['sno']} ({site['location']!r}): {e}")
 
-            map_bytes = None
+            try:
+                data['landmarks'] = get_real_landmarks(site['location'], site['market'], n=3) or []
+            except Exception as e:
+                print(f"[OOH DECK LANDMARKS] failed for site {site['sno']} ({site['location']!r}): {e}")
+                data['landmarks'] = []
+
             try:
                 map_bytes = get_map_image_bytes(site['location'], site['market'], zoom=16)
                 if not map_bytes:
@@ -1550,16 +1550,19 @@ def _etihad_build_job(job_id: str, template_bytes: bytes, sites: list):
                     # is often too descriptive for the geocoder — fall back to a city-level map
                     # rather than leaving the placeholder blank.
                     map_bytes = get_map_image_bytes(site['market'], site['market'], zoom=12)
+                data['map_bytes'] = map_bytes
             except Exception as e:
-                print(f"[ETIHAD MAP] failed for site {site['sno']} ({site['location']!r}): {e}")
-            map_lookup[site['sno']] = (map_bytes, _etihad_maps_search_url(site['location'], site['market']))
+                print(f"[OOH DECK MAP] failed for site {site['sno']} ({site['location']!r}): {e}")
+                data['map_bytes'] = None
+
+            per_site[site['sno']] = data
 
         update('building', 'Assembling slides…', 92)
         prs = Presentation(io.BytesIO(template_bytes))
-        _etihad_build_deck(prs, sites, map_lookup)
+        _ooh_build_deck(prs, sites, client_name, campaign_subtitle, campaign_name, duration, per_site)
 
         update('building', 'Saving file…', 97)
-        output_filename = f"Etihad_OOH_Proposal_{job_id[:8]}.pptx"
+        output_filename = f"OOH_Deck_{job_id[:8]}.pptx"
         output_path = OUTPUT_FOLDER / output_filename
         prs.save(str(output_path))
 
@@ -1577,28 +1580,34 @@ def _etihad_build_job(job_id: str, template_bytes: bytes, sites: list):
         print(traceback.format_exc())
 
 
-@app.route('/etihad-ooh')
-def etihad_ooh_page():
-    return render_template('etihad_ooh.html')
+@app.route('/ooh-deck')
+def ooh_deck_page():
+    return render_template('ooh_deck.html')
 
 
-@app.route('/build-etihad-proposal', methods=['POST'])
-def build_etihad_proposal_route():
-    """Step 1: upload the vendor Excel plan + Etihad template, parse the Excel, start the build job."""
+@app.route('/build-ooh-deck', methods=['POST'])
+def build_ooh_deck_route():
+    """Step 1: upload the Excel site plan + template + client/campaign details, start the build job."""
     excel_file    = request.files.get('excel')
     template_file = request.files.get('template')
+    client_name       = (request.form.get('client_name') or '').strip()
+    campaign_name     = (request.form.get('campaign_name') or '').strip()
+    campaign_subtitle = (request.form.get('campaign_subtitle') or '').strip()
+    duration          = (request.form.get('duration') or '').strip()
 
     if not excel_file or not excel_file.filename:
         return jsonify({'error': 'Excel site-plan file is required.'}), 400
     if not template_file or not template_file.filename:
-        return jsonify({'error': 'Etihad template file is required.'}), 400
+        return jsonify({'error': 'Template file is required.'}), 400
     if not excel_file.filename.lower().endswith(('.xlsx', '.xls')):
         return jsonify({'error': 'Site plan must be .xlsx or .xls'}), 400
     if not template_file.filename.lower().endswith('.pptx'):
-        return jsonify({'error': 'Etihad template must be a .pptx'}), 400
+        return jsonify({'error': 'Template must be a .pptx'}), 400
+    if not client_name:
+        return jsonify({'error': 'Client name is required.'}), 400
 
     try:
-        sites = _etihad_parse_excel_sites(excel_file.read())
+        sites = _ooh_parse_excel_sites(excel_file.read())
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -1613,7 +1622,11 @@ def build_etihad_proposal_route():
             'output':   None,
         }
 
-    threading.Thread(target=_etihad_build_job, args=(job_id, template_bytes, sites), daemon=True).start()
+    threading.Thread(
+        target=_ooh_build_job,
+        args=(job_id, template_bytes, sites, client_name, campaign_subtitle, campaign_name, duration),
+        daemon=True,
+    ).start()
     return jsonify({'job_id': job_id, 'site_count': len(sites)})
 
 
