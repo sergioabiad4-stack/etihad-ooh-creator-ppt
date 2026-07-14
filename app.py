@@ -1243,7 +1243,9 @@ def _ooh_format_site_fields(site: dict) -> dict:
         'sov':           sov_fmt,
         'traffic':       audience_fmt,
         # Fallbacks used only if AI content is unavailable (no API key, or the call failed).
-        'site_name_fallback':   site['location'][:60],
+        # Kept short since this fills a large single-line title font (a longer
+        # string wraps and overlaps the subtitle below it).
+        'site_name_fallback':   site['location'][:24],
         'location_fallback':    site['location'],
         'visibility_fallback':  visibility_fallback,
         'audience_fallback':    audience_fmt,
@@ -1271,7 +1273,7 @@ Site details:
 Return ONLY valid JSON (no markdown fences, no extra text) with exactly these keys:
 
 {{
-  "site_name": "<a short, clean display name for this site, 2-6 words, e.g. 'One Times Square'>",
+  "site_name": "<a SHORT display name for this site, max 24 characters, must fit on a single line in a large title font, e.g. 'One Times Square' or 'Marine Drive'>",
   "site_nickname": "<a short, catchy 2-5 word descriptor/nickname for this specific site, e.g. 'The Ball Drop Tower'>",
   "location_desc": "<2-3 sentences describing where this site is located and its surroundings>",
   "visibility_desc": "<2-3 sentences about the screen's visibility, format, and viewing conditions>",
@@ -1449,7 +1451,11 @@ def _ooh_fill_site_slide(slide, fields: dict, ai: dict, client_name: str, map_by
 
     left_column.sort(key=lambda sh: sh.top)
     if len(left_column) >= 1:
-        _ooh_set_shape_text(left_column[0], ai.get('site_name') or fields.get('site_name_fallback', ''))
+        # Capped defensively (not just via the AI prompt) — this is a large
+        # single-line title font, and a longer string wraps and overlaps the
+        # subtitle sitting right below it.
+        title = (ai.get('site_name') or fields.get('site_name_fallback', ''))[:24]
+        _ooh_set_shape_text(left_column[0], title)
     if len(left_column) >= 2:
         nickname = ai.get('site_nickname', '')
         market = fields.get('market', '')
@@ -1538,7 +1544,13 @@ def _ooh_build_job(job_id: str, template_bytes: bytes, sites: list, client_name:
                     print(f"[OOH DECK AI] failed for site {site['sno']} ({site['location']!r}): {e}")
 
             try:
-                data['landmarks'] = get_real_landmarks(site['location'], site['market'], n=3) or []
+                landmarks = get_real_landmarks(site['location'], site['market'], n=3)
+                if not landmarks:
+                    # Same issue as the map: the full location text is often too
+                    # descriptive to geocode — fall back to city-level landmarks
+                    # rather than leaving the section blank.
+                    landmarks = get_real_landmarks(site['market'], site['market'], n=3)
+                data['landmarks'] = landmarks or []
             except Exception as e:
                 print(f"[OOH DECK LANDMARKS] failed for site {site['sno']} ({site['location']!r}): {e}")
                 data['landmarks'] = []
