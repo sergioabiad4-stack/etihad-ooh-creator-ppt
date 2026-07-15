@@ -1299,6 +1299,38 @@ Return ONLY valid JSON (no markdown fences, no extra text) with exactly these ke
         raise ValueError(f"AI returned invalid JSON: {text[:200]}")
 
 
+def _ooh_generate_ai_landmarks(location: str, market: str, ai_client: anthropic.Anthropic, n: int = 3) -> list:
+    """Fallback for when real geocoding can't find nearby landmarks (the free
+    OSM/Overpass lookup is unreliable — it requires >= n hits within a tight
+    radius and can fail even for a whole city name, not just a noisy address).
+    Asks Claude to name real, well-known landmarks from its own knowledge,
+    in the same "Name - 0.Xkm" format the real lookup produces."""
+    prompt = f"""Name {n} real, well-known landmarks near this location, using your general knowledge of the area.
+
+Location: {location}
+City: {market}
+
+Return ONLY valid JSON (no markdown fences, no extra text), a single array of exactly {n} strings, each formatted as "Landmark Name - 0.Xkm" with a plausible walking distance estimate (under 2km). Example: ["Rotterdam Bridge - 0.5km", "Central Station - 1.2km", "City Park - 1.8km"]"""
+
+    response = ai_client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=300,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = response.content[0].text.strip()
+    raw = re.sub(r"^```[a-z]*\n?", "", raw)
+    raw = re.sub(r"\n?```$", "", raw)
+    text = raw.strip()
+    try:
+        result = json.loads(text)
+    except json.JSONDecodeError:
+        m = re.search(r'\[[\s\S]*\]', text)
+        if not m:
+            raise ValueError(f"AI returned invalid JSON: {text[:200]}")
+        result = json.loads(m.group())
+    return [str(x) for x in result][:n]
+
+
 def _ooh_clone_slide(prs: Presentation, idx: int):
     """Clone slide idx, preserving any embedded images (e.g. the Skyscale logo)
     by re-relating each image part to the new slide and remapping r:embed/
@@ -1543,6 +1575,7 @@ def _ooh_build_job(job_id: str, template_bytes: bytes, sites: list, client_name:
                 except Exception as e:
                     print(f"[OOH DECK AI] failed for site {site['sno']} ({site['location']!r}): {e}")
 
+            landmarks = []
             try:
                 landmarks = get_real_landmarks(site['location'], site['market'], n=3)
                 if not landmarks:
@@ -1550,10 +1583,19 @@ def _ooh_build_job(job_id: str, template_bytes: bytes, sites: list, client_name:
                     # descriptive to geocode — fall back to city-level landmarks
                     # rather than leaving the section blank.
                     landmarks = get_real_landmarks(site['market'], site['market'], n=3)
-                data['landmarks'] = landmarks or []
             except Exception as e:
                 print(f"[OOH DECK LANDMARKS] failed for site {site['sno']} ({site['location']!r}): {e}")
-                data['landmarks'] = []
+
+            if not landmarks and ai_client:
+                # The free OSM/Overpass lookup is unreliable — it requires >= 3
+                # hits within a tight radius and can come back empty even for a
+                # whole city name. Fall back to Claude's own knowledge of the area.
+                try:
+                    landmarks = _ooh_generate_ai_landmarks(site['location'], site['market'], ai_client, n=3)
+                except Exception as e:
+                    print(f"[OOH DECK LANDMARKS] AI fallback failed for site {site['sno']} ({site['location']!r}): {e}")
+
+            data['landmarks'] = landmarks or []
 
             try:
                 map_bytes = get_map_image_bytes(site['location'], site['market'], zoom=16)
