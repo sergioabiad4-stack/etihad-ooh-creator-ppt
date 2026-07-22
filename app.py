@@ -1116,25 +1116,20 @@ _OOH_NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships
 # Excel's header row, wherever that row happens to land (there's a Date/
 # Client/Campaign block above it).
 _OOH_HEADER_KEYWORDS = {
-    'sno':        ['s. no.', 's.no.', 's no', 'sno'],
-    'state':      ['state'],
-    'market':     ['market'],
-    'location':   ['location'],
-    'audience':   ['contacts per day'],
-    'media':      ['media'],
-    'type':       ['type'],
-    'units':      ['units'],
-    'w':          ['w'],
-    'h':          ['h'],
-    'sov':        ['sov %', 'sov%'],
-    'lead_time':  ['lead time'],
-    'language':   ['language'],
-    'resolution': ['screen resolution (in pixels)', 'screen resolution'],
-    'loop':       ['screen loop'],
+    'market':            ['market'],
+    'site_name':         ['site name'],
+    'location':          ['location'],
+    'format':            ['format'],
+    'units':             ['units'],
+    'size':              ['size'],
+    'spot_duration':     ['spot duration'],
+    'sov_loop':          ['sov/loop', 'sov / loop'],
+    'campaign_duration': ['campaign duration'],
+    'impacts':           ['impacts'],
 }
-# These columns get merged across multi-row site clusters in the source sheet
-# (e.g. two screens at the same address) — blank cells inherit the last value.
-_OOH_FORWARD_FILL_FIELDS = ('state', 'market', 'location', 'audience', 'sov')
+# Market is blank on continuation rows within the same city section — every
+# other column (including Site Name and Location) is filled on every row.
+_OOH_FORWARD_FILL_FIELDS = ('market',)
 
 
 def _ooh_find_header_row(rows: list) -> int:
@@ -1164,8 +1159,8 @@ def _ooh_parse_excel_sites(excel_bytes: bytes) -> list:
                 field_col[field] = ci
                 break
 
-    if 'location' not in field_col or 'market' not in field_col:
-        raise ValueError("Could not find 'Location' and 'Market' columns in the Excel file.")
+    if 'location' not in field_col or 'site_name' not in field_col:
+        raise ValueError("Could not find 'Site Name' and 'Location' columns in the Excel file.")
 
     def cell(row, field):
         ci = field_col.get(field)
@@ -1178,8 +1173,8 @@ def _ooh_parse_excel_sites(excel_bytes: bytes) -> list:
     sno_counter = 0
 
     for row in raw[hdr_idx + 1:]:
-        if not cell(row, 'sno'):
-            continue  # blank separator row or a "<City> Total" subtotal row — neither has a serial number
+        if not cell(row, 'site_name'):
+            continue  # blank separator row, subtotal, or trailing terms/disclaimer text — none of those have a Site Name
 
         values = {}
         for field in _OOH_FORWARD_FILL_FIELDS:
@@ -1189,21 +1184,17 @@ def _ooh_parse_excel_sites(excel_bytes: bytes) -> list:
 
         sno_counter += 1
         sites.append({
-            'sno':        sno_counter,
-            'state':      values['state'],
-            'market':     values['market'] or 'Other',
-            'location':   values['location'],
-            'audience':   values['audience'],
-            'media':      cell(row, 'media'),
-            'type':       cell(row, 'type'),
-            'units':      cell(row, 'units') or '1',
-            'w':          cell(row, 'w'),
-            'h':          cell(row, 'h'),
-            'sov':        values['sov'],
-            'lead_time':  cell(row, 'lead_time'),
-            'language':   cell(row, 'language') or 'English',
-            'resolution': cell(row, 'resolution'),
-            'loop':       cell(row, 'loop'),
+            'sno':               sno_counter,
+            'market':            values['market'] or 'Other',
+            'site_name':         cell(row, 'site_name'),
+            'location':          cell(row, 'location'),
+            'format':            cell(row, 'format'),
+            'units':             cell(row, 'units') or '1',
+            'size':              cell(row, 'size'),
+            'spot_duration':     cell(row, 'spot_duration'),
+            'sov_loop':          cell(row, 'sov_loop'),
+            'campaign_duration': cell(row, 'campaign_duration'),
+            'impacts':           cell(row, 'impacts'),
         })
 
     if not sites:
@@ -1212,43 +1203,34 @@ def _ooh_parse_excel_sites(excel_bytes: bytes) -> list:
 
 
 def _ooh_format_site_fields(site: dict) -> dict:
-    """Derive the plain-fact display strings (Format/Size/Units/etc.) from raw Excel fields."""
-    audience_digits = site['audience'].replace(',', '')
+    """Derive the plain-fact display strings (Format/Size/Units/etc.) from raw Excel fields.
+
+    Format/Size/Spot Duration/SOV-Loop already arrive as ready-to-display free
+    text from this sheet (e.g. "54,4m x 13,44m", "60 spots per day") — no
+    parsing needed, unlike the old column set this replaced.
+    """
+    impacts_digits = re.sub(r'[^\d.]', '', site['impacts'])
     try:
-        audience_fmt = f"{int(float(audience_digits)):,} daily" if audience_digits else ''
+        impacts_fmt = f"{int(float(impacts_digits)):,}" if impacts_digits else site['impacts']
     except ValueError:
-        audience_fmt = site['audience']
+        impacts_fmt = site['impacts']
 
-    size_fmt = f"{site['w']} x {site['h']}" if site['w'] and site['h'] else ''
-
-    sov_fmt = ''
-    if site['sov']:
-        try:
-            sov_fmt = f"{float(site['sov']):.1f}%"
-        except ValueError:
-            sov_fmt = site['sov']
-
-    spot_duration = ''
-    m = re.search(r'(\d+)\s*sec', site['loop'], re.IGNORECASE)
-    if m:
-        spot_duration = m.group(1) + ' seconds'
-
-    visibility_fallback = ', '.join(p for p in (site['media'], site['type'], site['resolution']) if p)
+    visibility_fallback = ', '.join(p for p in (site['format'], site['size'], site['spot_duration']) if p)
 
     return {
-        'format':        site['type'] or site['media'],
-        'size':          size_fmt,
+        'format':        site['format'],
+        'size':          site['size'],
         'units':         site['units'],
-        'spot_duration': spot_duration,
-        'sov':           sov_fmt,
-        'traffic':       audience_fmt,
+        'spot_duration': site['spot_duration'],
+        'sov':           site['sov_loop'],
+        'traffic':       impacts_fmt,
         # Fallbacks used only if AI content is unavailable (no API key, or the call failed).
         # Kept short since this fills a large single-line title font (a longer
         # string wraps and overlaps the subtitle below it).
-        'site_name_fallback':   site['location'][:24],
+        'site_name_fallback':   site['site_name'][:24],
         'location_fallback':    site['location'],
         'visibility_fallback':  visibility_fallback,
-        'audience_fallback':    audience_fmt,
+        'audience_fallback':    impacts_fmt,
     }
 
 
@@ -1259,21 +1241,20 @@ def _ooh_generate_ai_content(site: dict, client_name: str, ai_client: anthropic.
     prompt = f"""You are writing punchy, professional copy for an OOH (Out-of-Home) advertising strategy proposal for the client "{client_name}".
 
 Site details:
+- Site name: {site['site_name']}
 - Location: {site['location']}
-- State: {site['state']}
 - Market/City: {site['market']}
-- Media: {site['media']}
-- Screen type: {site['type']}
-- Size: {site['w']} x {site['h']}
-- Screen resolution: {site['resolution']}
-- Contacts per day: {site['audience']}
-- SOV: {site['sov']}%
+- Format: {site['format']}
+- Size: {site['size']}
+- Spot duration: {site['spot_duration']}
+- SOV/Loop: {site['sov_loop']}
 - Units: {site['units']}
+- Impacts: {site['impacts']}
 
 Return ONLY valid JSON (no markdown fences, no extra text) with exactly these keys:
 
 {{
-  "site_name": "<a SHORT display name for this site, max 24 characters, must fit on a single line in a large title font, e.g. 'One Times Square' or 'Marine Drive'>",
+  "site_name": "<a SHORT display name for this site based on '{site['site_name']}', max 24 characters, must fit on a single line in a large title font, e.g. 'One Times Square' or 'Marine Drive'>",
   "site_nickname": "<a short, catchy 2-5 word descriptor/nickname for this specific site, e.g. 'The Ball Drop Tower'>",
   "location_desc": "<2-3 sentences describing where this site is located and its surroundings>",
   "visibility_desc": "<2-3 sentences about the screen's visibility, format, and viewing conditions>",
