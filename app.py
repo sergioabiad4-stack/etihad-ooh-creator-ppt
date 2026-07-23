@@ -1096,18 +1096,19 @@ def fill_cn_plan():
 
 
 # ---------------------------------------------------------------------------
-# Etihad OOH Proposal Builder
+# Unified OOH Proposal Deck Builder
 # ---------------------------------------------------------------------------
-# Fills the Etihad-branded template from the vendor-supplied Excel media plan
-# (one row per site: State/Market/Location/Contacts Per Day/Media/Type/Units/
-# W/H/SOV %/Lead Time/Language/Screen Resolution/Screen Loop). The template's
-# data slide (shape IDs 138-146) is cloned once per site, and a divider slide
-# (shape IDs 169-171) is cloned once per market/city, in first-seen order.
-# Since the Excel has no vendor photos, the "Pictures" placeholder is dropped
-# and "Map" is filled with a geocoded Google Maps screenshot (same lookup the
-# main OOH generator uses) — fetching one map per site is network-bound, so
-# the build runs as a background job polled via the existing /api/status and
-# /api/download endpoints rather than a single synchronous request.
+# Fills a branded 2-slide template (cover + one site page) from a vendor
+# Excel media plan (one row per site: Market/Site Name/Location/Format/
+# Units/Size/Spot Duration/SOV-Loop/Impacts). The site-page slide is cloned
+# once per site; there's no vendor photo, so its "[SITE PHOTO]"/"[MAP]"
+# placeholders are simply dropped. The slide title always matches the
+# plan's Site Name verbatim. AI fills the descriptive copy (Location/
+# Visibility/Audience/Why this site) and real landmark lookups (with an
+# AI fallback when geocoding finds nothing) run per site — network-bound
+# work, so the build runs as a background job polled via the existing
+# /api/status and /api/download endpoints rather than a single
+# synchronous request.
 
 _OOH_NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 _OOH_NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -1251,10 +1252,11 @@ Site details:
 - Units: {site['units']}
 - Impacts: {site['impacts']}
 
+The site's title on the slide is always "{site['site_name']}" verbatim from the plan — do not rename or paraphrase it.
+
 Return ONLY valid JSON (no markdown fences, no extra text) with exactly these keys:
 
 {{
-  "site_name": "<a SHORT display name for this site based on '{site['site_name']}', max 24 characters, must fit on a single line in a large title font, e.g. 'One Times Square' or 'Marine Drive'>",
   "site_nickname": "<a short, catchy 2-5 word descriptor/nickname for this specific site, e.g. 'The Ball Drop Tower'>",
   "location_desc": "<2-3 sentences describing where this site is located and its surroundings>",
   "visibility_desc": "<2-3 sentences about the screen's visibility, format, and viewing conditions>",
@@ -1412,7 +1414,7 @@ def _ooh_fill_cover_slide(slide, client_name: str, campaign_subtitle: str, campa
         _ooh_set_shape_text(sh, value)
 
 
-def _ooh_fill_site_slide(slide, fields: dict, ai: dict, client_name: str, map_bytes: bytes | None, landmarks: list):
+def _ooh_fill_site_slide(slide, fields: dict, ai: dict, client_name: str, landmarks: list):
     """Fill a cloned site-page slide.
 
     Labels (LOCATION/VISIBILITY/AUDIENCE/etc.) and prefixed fact lines
@@ -1423,17 +1425,14 @@ def _ooh_fill_site_slide(slide, fields: dict, ai: dict, client_name: str, map_by
     reproduces the template's label/value layout (verified against the
     actual template file's real coordinates).
     """
-    photo_shape = map_shape = None
+    placeholder_shapes = []  # [SITE PHOTO] and [MAP] boxes — no image source for either, so just removed
     left_column = []   # title + subtitle candidates
     leftover = []      # why-this-site / location / visibility / audience / 3 landmarks
 
     for sh in slide.shapes:
         if _ooh_has_blip_fill(sh):
             if sh.width > 8_000_000 and sh.left < 1_000_000:
-                if sh.top < 4_000_000:
-                    photo_shape = sh
-                else:
-                    map_shape = sh
+                placeholder_shapes.append(sh)
             continue
 
         text = _ooh_shape_text(sh)
@@ -1464,10 +1463,11 @@ def _ooh_fill_site_slide(slide, fields: dict, ai: dict, client_name: str, map_by
 
     left_column.sort(key=lambda sh: sh.top)
     if len(left_column) >= 1:
-        # Capped defensively (not just via the AI prompt) — this is a large
-        # single-line title font, and a longer string wraps and overlaps the
+        # Always the raw Excel Site Name (not an AI paraphrase) so the slide
+        # title matches the plan exactly. Capped since this is a large
+        # single-line title font — a longer string wraps and overlaps the
         # subtitle sitting right below it.
-        title = (ai.get('site_name') or fields.get('site_name_fallback', ''))[:24]
+        title = fields.get('site_name_fallback', '')[:24]
         _ooh_set_shape_text(left_column[0], title)
     if len(left_column) >= 2:
         nickname = ai.get('site_nickname', '')
@@ -1487,13 +1487,8 @@ def _ooh_fill_site_slide(slide, fields: dict, ai: dict, client_name: str, map_by
         _ooh_set_shape_text(sh, value)
 
     spt = slide.shapes._spTree
-    if photo_shape is not None:
-        spt.remove(photo_shape._element)  # no vendor photo available — leave blank
-    if map_shape is not None:
-        ML, MT, MW, MH = map_shape.left, map_shape.top, map_shape.width, map_shape.height
-        spt.remove(map_shape._element)
-        if map_bytes:
-            slide.shapes.add_picture(io.BytesIO(map_bytes), ML, MT, MW, MH)
+    for sh in placeholder_shapes:
+        spt.remove(sh._element)  # no vendor photo, and the maps feature is unused — leave blank
 
 
 def _ooh_build_deck(prs: Presentation, sites: list, client_name: str, campaign_subtitle: str,
@@ -1510,7 +1505,6 @@ def _ooh_build_deck(prs: Presentation, sites: list, client_name: str, campaign_s
             {**_ooh_format_site_fields(site), 'market': site['market']},
             data.get('ai_content') or {},
             client_name,
-            data.get('map_bytes'),
             data.get('landmarks') or [],
         )
 
@@ -1529,7 +1523,7 @@ def _ooh_build_deck(prs: Presentation, sites: list, client_name: str, campaign_s
 
 def _ooh_build_job(job_id: str, template_bytes: bytes, sites: list, client_name: str,
                     campaign_subtitle: str, campaign_name: str, duration: str):
-    """Background job: AI copy + real landmarks + a map screenshot per site, then assemble the deck."""
+    """Background job: AI copy + real landmarks per site, then assemble the deck."""
     def update(status, message, progress=0):
         with jobs_lock:
             jobs[job_id]['status'] = status
@@ -1560,9 +1554,9 @@ def _ooh_build_job(job_id: str, template_bytes: bytes, sites: list, client_name:
             try:
                 landmarks = get_real_landmarks(site['location'], site['market'], n=3)
                 if not landmarks:
-                    # Same issue as the map: the full location text is often too
-                    # descriptive to geocode — fall back to city-level landmarks
-                    # rather than leaving the section blank.
+                    # The full location text is often too descriptive to
+                    # geocode — fall back to city-level landmarks rather than
+                    # leaving the section blank.
                     landmarks = get_real_landmarks(site['market'], site['market'], n=3)
             except Exception as e:
                 print(f"[OOH DECK LANDMARKS] failed for site {site['sno']} ({site['location']!r}): {e}")
@@ -1577,18 +1571,6 @@ def _ooh_build_job(job_id: str, template_bytes: bytes, sites: list, client_name:
                     print(f"[OOH DECK LANDMARKS] AI fallback failed for site {site['sno']} ({site['location']!r}): {e}")
 
             data['landmarks'] = landmarks or []
-
-            try:
-                map_bytes = get_map_image_bytes(site['location'], site['market'], zoom=16)
-                if not map_bytes:
-                    # The full location text (e.g. "Set of 2 - Bandra Kurla Complex - Entrance")
-                    # is often too descriptive for the geocoder — fall back to a city-level map
-                    # rather than leaving the placeholder blank.
-                    map_bytes = get_map_image_bytes(site['market'], site['market'], zoom=12)
-                data['map_bytes'] = map_bytes
-            except Exception as e:
-                print(f"[OOH DECK MAP] failed for site {site['sno']} ({site['location']!r}): {e}")
-                data['map_bytes'] = None
 
             per_site[site['sno']] = data
 
