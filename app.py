@@ -1113,6 +1113,10 @@ def fill_cn_plan():
 _OOH_NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 _OOH_NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 
+# Bundled default deck template — no upload needed unless the user wants a
+# different one for a specific campaign.
+OOH_DECK_TEMPLATE_PATH = BASE_DIR / "assets" / "OOH_Deck_Template.pptx"
+
 # Header text -> internal field name. Matched case-insensitively against the
 # Excel's header row, wherever that row happens to land (there's a Date/
 # Client/Campaign block above it).
@@ -1614,11 +1618,9 @@ def build_ooh_deck_route():
 
     if not excel_file or not excel_file.filename:
         return jsonify({'error': 'Excel site-plan file is required.'}), 400
-    if not template_file or not template_file.filename:
-        return jsonify({'error': 'Template file is required.'}), 400
     if not excel_file.filename.lower().endswith(('.xlsx', '.xls')):
         return jsonify({'error': 'Site plan must be .xlsx or .xls'}), 400
-    if not template_file.filename.lower().endswith('.pptx'):
+    if template_file and template_file.filename and not template_file.filename.lower().endswith('.pptx'):
         return jsonify({'error': 'Template must be a .pptx'}), 400
     if not client_name:
         return jsonify({'error': 'Client name is required.'}), 400
@@ -1628,7 +1630,10 @@ def build_ooh_deck_route():
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-    template_bytes = template_file.read()
+    if template_file and template_file.filename:
+        template_bytes = template_file.read()
+    else:
+        template_bytes = OOH_DECK_TEMPLATE_PATH.read_bytes()
     job_id = uuid.uuid4().hex
     with jobs_lock:
         jobs[job_id] = {
