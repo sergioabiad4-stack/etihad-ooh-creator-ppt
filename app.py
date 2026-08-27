@@ -1259,14 +1259,14 @@ Site details:
 
 The site's title on the slide is always "{site['site_name']}" verbatim from the plan — do not rename or paraphrase it.
 
-Each description fills a small fixed-size text box on the slide, so brevity is essential: write EXACTLY 1 short sentence per field, under 140 characters including spaces. Do not pad with a second sentence.
+Each description fills a small fixed-size text box on the slide, so keep every field to 1 sentence, roughly 150-200 characters including spaces — enough for about 3 lines, no more.
 
 Return ONLY valid JSON (no markdown fences, no extra text) with exactly these keys:
 
 {{
-  "location_desc": "<1 short sentence, under 140 characters, describing where this site is located and its surroundings>",
-  "visibility_desc": "<1 short sentence, under 140 characters, about the screen's visibility, format, and viewing conditions>",
-  "audience_desc": "<1 short sentence, under 140 characters, about the audience/traffic this site reaches>"
+  "location_desc": "<1 sentence, ~150-200 characters, describing where this site is located and its surroundings>",
+  "visibility_desc": "<1 sentence, ~150-200 characters, about the screen's visibility, format, and viewing conditions>",
+  "audience_desc": "<1 sentence, ~150-200 characters, about the audience/traffic this site reaches>"
 }}"""
 
     response = ai_client.messages.create(
@@ -1536,26 +1536,37 @@ def _ooh_fill_site_slide(slide, fields: dict, ai: dict, landmarks: list, maps_ur
     # labels first and all 3 values after, in document order, rather than
     # interleaving them as label/value pairs.
     label_shapes.sort(key=lambda item: item[1].top)
-    # Clamped to the narrowest of the three value boxes' capacity at their
-    # design font size (~200 chars) — a hard safety net independent of
-    # whatever length the AI actually returns.
-    ai_by_label = {
-        'LOCATION':   _ooh_clamp_text(ai.get('location_desc') or fields.get('location_fallback', ''), 200),
-        'VISIBILITY': _ooh_clamp_text(ai.get('visibility_desc') or fields.get('visibility_fallback', ''), 200),
-        'AUDIENCE':   _ooh_clamp_text(ai.get('audience_desc') or fields.get('audience_fallback', ''), 200),
+    ai_raw_by_label = {
+        'LOCATION':   ai.get('location_desc') or fields.get('location_fallback', ''),
+        'VISIBILITY': ai.get('visibility_desc') or fields.get('visibility_fallback', ''),
+        'AUDIENCE':   ai.get('audience_desc') or fields.get('audience_fallback', ''),
     }
     for i, (label_text, label_sh) in enumerate(label_shapes):
         lower_bound = label_sh.top
         upper_bound = label_shapes[i + 1][1].top if i + 1 < len(label_shapes) else None
         for sh in value_candidates:
             if sh.top > lower_bound and (upper_bound is None or sh.top < upper_bound):
-                _ooh_set_shape_text(sh, ai_by_label.get(label_text, ''))
+                # Budget sized to this specific box's own width (Audience's box
+                # is narrower than Location's/Visibility's) so each gets as much
+                # room as it can actually hold — a hard safety net independent
+                # of whatever length the AI actually returns.
+                max_chars = _ooh_max_chars_for_box(sh, lines=3.0)
+                _ooh_set_shape_text(sh, _ooh_clamp_text(ai_raw_by_label.get(label_text, ''), max_chars))
                 break
 
     if map_link_shape is not None:
         _ooh_set_shape_text(map_link_shape, 'View on Google Maps')
+        tf = map_link_shape.text_frame
+        # The template's own box was sized to fit the 8-character placeholder
+        # "Map link" on one line — our longer real label needs more width, not
+        # more height. Force single-line + a fixed wider box instead of relying
+        # on the renderer to recompute spAutoFit growth, since that recompute
+        # isn't reliably applied (it's the same issue normAutofit had above).
+        tf.word_wrap = False
+        tf.auto_size = MSO_AUTO_SIZE.NONE
+        map_link_shape.width = max(map_link_shape.width, Inches(2.6))
         try:
-            run = map_link_shape.text_frame.paragraphs[0].runs[0]
+            run = tf.paragraphs[0].runs[0]
             run.hyperlink.address = maps_url
         except Exception:
             pass
@@ -1563,6 +1574,24 @@ def _ooh_fill_site_slide(slide, fields: dict, ai: dict, landmarks: list, maps_ur
     spt = slide.shapes._spTree
     for sh in placeholder_shapes:
         spt.remove(sh._element)  # no vendor photo available — leave blank
+
+
+def _ooh_max_chars_for_box(shape, lines: float = 3.0, fallback_font_pt: float = 14.65) -> int:
+    """Estimate a safe character budget for ~`lines` lines of text in this
+    shape, from its actual width and its current (pre-replacement) font size.
+
+    A flat character cap doesn't account for the three value boxes having
+    different widths (Audience is noticeably narrower than Location), so this
+    ties the budget to real box geometry instead of one guessed number.
+    """
+    try:
+        font_pt = shape.text_frame.paragraphs[0].runs[0].font.size.pt
+    except Exception:
+        font_pt = fallback_font_pt
+    width_in = shape.width / 914400
+    avg_char_width_pt = font_pt * 0.53  # rough average glyph width for this template's body fonts
+    chars_per_line = max(10, int((width_in * 72) / avg_char_width_pt))
+    return int(chars_per_line * lines)
 
 
 def _ooh_clamp_text(text: str, max_chars: int) -> str:
