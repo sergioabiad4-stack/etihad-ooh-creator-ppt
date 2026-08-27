@@ -18,6 +18,7 @@ from pptx import Presentation
 from pptx.util import Inches
 from pptx.oxml.ns import qn
 from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.enum.text import MSO_AUTO_SIZE
 from lxml import etree
 import anthropic
 
@@ -1369,7 +1370,15 @@ def _ooh_set_shape_text(shape, text: str):
     """Replace a shape's visible text, preserving its first run's existing
     formatting (font/size/color) instead of rebuilding a run from scratch —
     this template's shapes are one label/value per shape with real design
-    styling already applied, unlike the multi-paragraph Etihad template."""
+    styling already applied, unlike the multi-paragraph Etihad template.
+
+    Real content (a long AI description, a long raw Site Name) doesn't
+    reliably match the length of whatever example text the box was
+    originally sized for — enabling PowerPoint's own "shrink text on
+    overflow" is far more robust than guessing a safe character count, since
+    it scales the font to whatever actually fits this specific box, rather
+    than relying on a fixed budget that's wrong for some boxes/fonts.
+    """
     tf = shape.text_frame
     paras = tf.paragraphs
     if not paras:
@@ -1387,6 +1396,11 @@ def _ooh_set_shape_text(shape, text: str):
         parent = el.getparent()
         if parent is not None:
             parent.remove(el)
+    try:
+        tf.word_wrap = True
+        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+    except Exception:
+        pass
 
 
 def _ooh_has_blip_fill(shape) -> bool:
