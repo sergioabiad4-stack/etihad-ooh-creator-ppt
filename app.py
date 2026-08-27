@@ -17,6 +17,7 @@ import pandas as pd
 from pptx import Presentation
 from pptx.util import Inches
 from pptx.oxml.ns import qn
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 from lxml import etree
 import anthropic
 
@@ -1240,9 +1241,8 @@ def _ooh_format_site_fields(site: dict) -> dict:
 
 
 def _ooh_generate_ai_content(site: dict, client_name: str, ai_client: anthropic.Anthropic) -> dict:
-    """Ask Claude for the site's display name/nickname, 2-3 sentence descriptive
-    copy for Location/Visibility/Audience, and a one-line "why this site" pitch
-    tailored to the client."""
+    """Ask Claude for 2-3 sentence descriptive copy for each of Location/
+    Visibility/Audience."""
     prompt = f"""You are writing punchy, professional copy for an OOH (Out-of-Home) advertising strategy proposal for the client "{client_name}".
 
 Site details:
@@ -1261,11 +1261,9 @@ The site's title on the slide is always "{site['site_name']}" verbatim from the 
 Return ONLY valid JSON (no markdown fences, no extra text) with exactly these keys:
 
 {{
-  "site_nickname": "<a short, catchy 2-5 word descriptor/nickname for this specific site, e.g. 'The Ball Drop Tower'>",
   "location_desc": "<2-3 sentences describing where this site is located and its surroundings>",
   "visibility_desc": "<2-3 sentences about the screen's visibility, format, and viewing conditions>",
-  "audience_desc": "<2-3 sentences about the audience/traffic this site reaches>",
-  "why_this_site": "<1-2 sentences on why this specific site is a strong fit for {client_name}>"
+  "audience_desc": "<2-3 sentences about the audience/traffic this site reaches>"
 }}"""
 
     response = ai_client.messages.create(
@@ -1320,28 +1318,36 @@ Return ONLY valid JSON (no markdown fences, no extra text), a single array of ex
 
 def _ooh_clone_slide(prs: Presentation, idx: int):
     """Clone slide idx, preserving any embedded images (e.g. the Skyscale logo)
-    by re-relating each image part to the new slide and remapping r:embed/
-    r:link IDs in the copied shape XML — a freshly-created relationship isn't
-    guaranteed to get the same ID as the original, so a naive deep-copy of
-    the shape tree leaves dangling references that show up as broken/missing
-    images in PowerPoint even though the file opens without error."""
+    and any existing hyperlinks (e.g. the template's own example "Map link")
+    by re-relating each image/external relationship to the new slide and
+    remapping r:embed/r:link/r:id IDs in the copied shape XML — a freshly-
+    created relationship isn't guaranteed to get the same ID as the
+    original, so a naive deep-copy of the shape tree leaves dangling
+    references. For images that just shows up as a broken/missing picture;
+    for a hyperlink it raises a KeyError the moment python-pptx tries to
+    read or replace it (e.g. via run.hyperlink.address = ...)."""
     tpl = prs.slides[idx]
     new = prs.slides.add_slide(tpl.slide_layout)
 
     rId_map = {}
     for rel_id, rel in tpl.part.rels.items():
-        if 'image' in rel.reltype:
-            try:
+        try:
+            if 'image' in rel.reltype:
                 new_rId = new.part.relate_to(rel.target_part, rel.reltype)
-                if new_rId != rel_id:
-                    rId_map[rel_id] = new_rId
-            except Exception:
-                pass
+            elif rel.is_external:
+                new_rId = new.part.relate_to(rel.target_ref, rel.reltype, is_external=True)
+            else:
+                continue
+            if new_rId != rel_id:
+                rId_map[rel_id] = new_rId
+        except Exception:
+            pass
 
     xml = etree.tostring(tpl.shapes._spTree, encoding='unicode')
     for old_id, new_id in rId_map.items():
         xml = xml.replace(f'r:embed="{old_id}"', f'r:embed="{new_id}"')
         xml = xml.replace(f'r:link="{old_id}"', f'r:link="{new_id}"')
+        xml = xml.replace(f'r:id="{old_id}"', f'r:id="{new_id}"')
 
     new_tree = new.shapes._spTree
     for child in list(new_tree):
@@ -1396,7 +1402,8 @@ def _ooh_has_blip_fill(shape) -> bool:
     return spPr.find(qn('a:blipFill')) is not None
 
 
-_OOH_STATIC_LABELS = {'LOCATION', 'VISIBILITY', 'AUDIENCE', 'TECHNICAL SPECIFICATIONS', 'NEARBY LANDMARKS'}
+_OOH_STATIC_LABELS = {'TECHNICAL SPECIFICATIONS', 'NEARBY LANDMARKS'}
+_OOH_VALUE_LABELS = ('LOCATION', 'VISIBILITY', 'AUDIENCE')
 _OOH_PREFIXED_FIELDS = [
     ('FORMAT :', 'format'),
     ('SIZE :', 'size'),
@@ -1405,6 +1412,23 @@ _OOH_PREFIXED_FIELDS = [
     ('FREQUENCY :', 'sov'),
     ('TRAFFIC :', 'traffic'),
 ]
+
+
+def _ooh_maps_search_url(location: str, market: str) -> str:
+    from urllib.parse import quote
+    return f"https://www.google.com/maps/search/?api=1&query={quote(f'{location}, {market}')}"
+
+
+def _ooh_iter_shapes_with_container(shapes):
+    """Yield (container, shape) pairs, descending into PowerPoint Groups —
+    this template nests Technical Specifications and Nearby Landmarks inside
+    groups rather than placing them directly on the slide. `container` is
+    the shape collection `shape` itself lives in, so callers can look at its
+    siblings (e.g. to find the other landmark slots next to their label)."""
+    for sh in shapes:
+        yield shapes, sh
+        if sh.shape_type == MSO_SHAPE_TYPE.GROUP:
+            yield from _ooh_iter_shapes_with_container(sh.shapes)
 
 
 def _ooh_fill_cover_slide(slide, client_name: str, campaign_subtitle: str, campaign_name: str, duration: str):
@@ -1418,20 +1442,45 @@ def _ooh_fill_cover_slide(slide, client_name: str, campaign_subtitle: str, campa
         _ooh_set_shape_text(sh, value)
 
 
-def _ooh_fill_site_slide(slide, fields: dict, ai: dict, client_name: str, landmarks: list):
-    """Fill a cloned site-page slide.
-
-    Labels (LOCATION/VISIBILITY/AUDIENCE/etc.) and prefixed fact lines
-    (FORMAT :/SIZE :/etc.) are matched by their own stable text. The title,
-    subtitle, four AI-prose values (why-this-site, location, visibility,
-    audience) and three landmark lines have no stable per-field marker of
-    their own — matched instead by sorting them by position, which reliably
-    reproduces the template's label/value layout (verified against the
-    actual template file's real coordinates).
+def _ooh_fill_site_slide(slide, fields: dict, ai: dict, landmarks: list, maps_url: str):
+    """Fill a cloned site-page slide (verified against the "EVEREST DIGITAL" /
+    "Bryant Park Digital" style page): title and the LOCATION/VISIBILITY/
+    AUDIENCE labels + values + "Map link" sit directly on the slide, while
+    Technical Specifications and Nearby Landmarks are nested inside
+    PowerPoint Groups.
     """
-    placeholder_shapes = []  # [SITE PHOTO] and [MAP] boxes — no image source for either, so just removed
-    left_column = []   # title + subtitle candidates
-    leftover = []      # why-this-site / location / visibility / audience / 3 landmarks
+    # Pass 1 (recursive — descends into groups): prefixed fact lines
+    # (FORMAT :/SIZE :/etc.) and the 3 landmark slots next to their
+    # "NEARBY LANDMARKS" label, wherever in the shape tree they live.
+    for container, sh in _ooh_iter_shapes_with_container(slide.shapes):
+        text = _ooh_shape_text(sh)
+        if not text:
+            continue
+        upper = text.upper()
+
+        if upper == 'NEARBY LANDMARKS':
+            # Compare by shape_id, not object identity — python-pptx builds a
+            # fresh wrapper object on each shape-collection iteration, so `s
+            # is sh` would never match even for the very same underlying
+            # shape and silently include the label among its own siblings.
+            siblings = [s for s in container if s.shape_id != sh.shape_id and _ooh_shape_text(s)]
+            siblings.sort(key=lambda s: s.top)
+            for s, val in zip(siblings, (landmarks + ['', '', ''])[:3]):
+                _ooh_set_shape_text(s, val)
+            continue
+
+        for prefix, field in _OOH_PREFIXED_FIELDS:
+            if upper.startswith(prefix):
+                _ooh_set_shape_text(sh, f"{prefix} {fields.get(field, '')}".strip())
+                break
+
+    # Pass 2 (top-level only): title, the LOCATION/VISIBILITY/AUDIENCE values,
+    # and the Map link — none of these have their own stable per-shape marker
+    # the way the prefixed fact lines do, so they're matched by position.
+    placeholder_shapes = []  # a leftover photo/map image placeholder, if the template has one
+    label_shapes = []        # (label_text, shape) for LOCATION / VISIBILITY / AUDIENCE
+    other_text_shapes = []   # title candidate + the 3 label values
+    map_link_shape = None
 
     for sh in slide.shapes:
         if _ooh_has_blip_fill(sh):
@@ -1444,85 +1493,123 @@ def _ooh_fill_site_slide(slide, fields: dict, ai: dict, client_name: str, landma
             continue
         upper = text.upper()
 
-        if upper in _OOH_STATIC_LABELS:
-            continue  # static label, no per-site change needed
-
-        if upper.startswith('WHY THIS SITE FOR'):
-            _ooh_set_shape_text(sh, f"Why this Site for {client_name}")
+        if upper in _OOH_STATIC_LABELS or any(upper.startswith(p) for p, _ in _OOH_PREFIXED_FIELDS):
+            continue  # static, or already handled in pass 1
+        if upper == 'MAP LINK':
+            map_link_shape = sh
             continue
-
-        matched = False
-        for prefix, field in _OOH_PREFIXED_FIELDS:
-            if upper.startswith(prefix):
-                _ooh_set_shape_text(sh, f"{prefix} {fields.get(field, '')}".strip())
-                matched = True
-                break
-        if matched:
+        if upper in _OOH_VALUE_LABELS:
+            label_shapes.append((upper, sh))
             continue
+        other_text_shapes.append(sh)
 
-        if sh.left < 1_000_000:
-            left_column.append(sh)
-        else:
-            leftover.append(sh)
-
-    left_column.sort(key=lambda sh: sh.top)
-    if len(left_column) >= 1:
+    # Title: the remaining shape with the smallest vertical position — the
+    # LOCATION/VISIBILITY/AUDIENCE values all sit much further down the slide.
+    other_text_shapes.sort(key=lambda sh: sh.top)
+    if other_text_shapes:
         # Always the raw Excel Site Name (not an AI paraphrase) so the slide
         # title matches the plan exactly. Capped since this is a large
-        # single-line title font — a longer string wraps and overlaps the
-        # subtitle sitting right below it.
+        # single-line title font that would otherwise wrap.
         title = fields.get('site_name_fallback', '')[:24]
-        _ooh_set_shape_text(left_column[0], title)
-    if len(left_column) >= 2:
-        nickname = ai.get('site_nickname', '')
-        market = fields.get('market', '')
-        _ooh_set_shape_text(left_column[1], f"{market.upper()}  |  {nickname}" if nickname else market.upper())
+        _ooh_set_shape_text(other_text_shapes[0], title)
+    value_candidates = other_text_shapes[1:]
 
-    leftover.sort(key=lambda sh: sh.top)
-    prose_values = [
-        ai.get('why_this_site') or f"A strong fit for {client_name}'s target audience.",
-        ai.get('location_desc') or fields.get('location_fallback', ''),
-        ai.get('visibility_desc') or fields.get('visibility_fallback', ''),
-        ai.get('audience_desc') or fields.get('audience_fallback', ''),
-    ]
-    for sh, value in zip(leftover[:4], prose_values):
-        _ooh_set_shape_text(sh, value)
-    for sh, value in zip(leftover[4:7], (landmarks + ['', '', ''])[:3]):
-        _ooh_set_shape_text(sh, value)
+    # Each label's value is whichever leftover shape sits between that label
+    # and the next one, by vertical position — the template places all 3
+    # labels first and all 3 values after, in document order, rather than
+    # interleaving them as label/value pairs.
+    label_shapes.sort(key=lambda item: item[1].top)
+    ai_by_label = {
+        'LOCATION':   ai.get('location_desc') or fields.get('location_fallback', ''),
+        'VISIBILITY': ai.get('visibility_desc') or fields.get('visibility_fallback', ''),
+        'AUDIENCE':   ai.get('audience_desc') or fields.get('audience_fallback', ''),
+    }
+    for i, (label_text, label_sh) in enumerate(label_shapes):
+        lower_bound = label_sh.top
+        upper_bound = label_shapes[i + 1][1].top if i + 1 < len(label_shapes) else None
+        for sh in value_candidates:
+            if sh.top > lower_bound and (upper_bound is None or sh.top < upper_bound):
+                _ooh_set_shape_text(sh, ai_by_label.get(label_text, ''))
+                break
+
+    if map_link_shape is not None:
+        _ooh_set_shape_text(map_link_shape, 'View on Google Maps')
+        try:
+            run = map_link_shape.text_frame.paragraphs[0].runs[0]
+            run.hyperlink.address = maps_url
+        except Exception:
+            pass
 
     spt = slide.shapes._spTree
     for sh in placeholder_shapes:
-        spt.remove(sh._element)  # no vendor photo, and the maps feature is unused — leave blank
+        spt.remove(sh._element)  # no vendor photo available — leave blank
+
+
+def _ooh_fill_divider_slide(slide, market: str):
+    """Fill the market/country divider slide's single text shape."""
+    candidates = [sh for sh in slide.shapes if _ooh_shape_text(sh)]
+    if candidates:
+        _ooh_set_shape_text(candidates[0], market)
+
+
+def _ooh_find_site_template_idx(prs: Presentation) -> int:
+    """Find the site-page template slide by its stable signature (top-level
+    shapes with the text 'LOCATION' and 'Map link') rather than a hardcoded
+    index — the bundled deck also ships a few alternate/example site-page
+    designs that aren't used, and a custom upload could order slides
+    differently."""
+    for i in range(2, len(prs.slides)):
+        texts = {_ooh_shape_text(sh) for sh in prs.slides[i].shapes if _ooh_shape_text(sh)}
+        if 'LOCATION' in texts and 'Map link' in texts:
+            return i
+    raise ValueError(
+        "Could not find the site-page template slide (expected a slide with "
+        "'LOCATION' and 'Map link' text boxes)."
+    )
 
 
 def _ooh_build_deck(prs: Presentation, sites: list, client_name: str, campaign_subtitle: str,
                      campaign_name: str, duration: str, per_site: dict):
-    """Fill the cover slide (idx 0) in place, clone the site slide (idx 1) once
-    per site, then remove the original site-template slide."""
+    """Fill the cover slide (idx 0) in place, then for each market (in
+    first-seen order) clone the divider slide (idx 1) and clone the site
+    template once per site, before removing every original template/example
+    slide except the cover."""
     _ooh_fill_cover_slide(prs.slides[0], client_name, campaign_subtitle, campaign_name, duration)
 
-    for site in sites:
-        slide = _ooh_clone_slide(prs, 1)
-        data = per_site.get(site['sno'], {})
-        _ooh_fill_site_slide(
-            slide,
-            {**_ooh_format_site_fields(site), 'market': site['market']},
-            data.get('ai_content') or {},
-            client_name,
-            data.get('landmarks') or [],
-        )
+    divider_idx = 1
+    site_idx = _ooh_find_site_template_idx(prs)
+    original_slide_count = len(prs.slides)
 
-    # Remove the original site-template slide (idx 1) now that every site has its own clone.
+    markets_in_order = list(dict.fromkeys(s['market'] for s in sites))
+    for market in markets_in_order:
+        divider = _ooh_clone_slide(prs, divider_idx)
+        _ooh_fill_divider_slide(divider, market)
+
+        for site in (s for s in sites if s['market'] == market):
+            slide = _ooh_clone_slide(prs, site_idx)
+            data = per_site.get(site['sno'], {})
+            maps_url = _ooh_maps_search_url(site['location'], site['market'])
+            _ooh_fill_site_slide(
+                slide,
+                {**_ooh_format_site_fields(site), 'market': site['market']},
+                data.get('ai_content') or {},
+                data.get('landmarks') or [],
+                maps_url,
+            )
+
+    # Remove every original slide except the cover (idx 0) — this drops the
+    # divider/site templates plus any unused example site-page variants.
     sll = prs.slides._sldIdLst
     pp = prs.part
-    elem = list(sll)[1]
-    rId = elem.get(f'{{{_OOH_NS_R}}}id')
-    sll.remove(elem)
-    if rId:
-        try:
-            pp._rels.pop(rId)
-        except Exception:
-            pass
+    for idx in range(original_slide_count - 1, 0, -1):
+        elem = list(sll)[idx]
+        rId = elem.get(f'{{{_OOH_NS_R}}}id')
+        sll.remove(elem)
+        if rId:
+            try:
+                pp._rels.pop(rId)
+            except Exception:
+                pass
 
 
 def _ooh_build_job(job_id: str, template_bytes: bytes, sites: list, client_name: str,

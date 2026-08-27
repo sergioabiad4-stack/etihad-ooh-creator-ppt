@@ -72,7 +72,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <p class="page-sub">Upload the Excel site plan — the server writes AI-researched copy and real landmarks into one filled slide per site, using the bundled branded template by default.</p>
 
   <div class="info-box">
-    ℹ️ Expects one header row with <strong>Market, Site Name, Location, Format, Units, Size, Spot Duration, SOV/Loop, Impacts</strong> columns (blank/subtotal rows are skipped automatically — a row needs a Site Name to count). The slide title always matches the plan's Site Name exactly. No vendor photos or maps are used — both placeholders are left blank. This means the build can take a few minutes for large plans (one AI call plus one landmark lookup per site).
+    ℹ️ Expects one header row with <strong>Market, Site Name, Location, Format, Units, Size, Spot Duration, SOV/Loop, Impacts</strong> columns (blank/subtotal rows are skipped automatically — a row needs a Site Name to count). The slide title always matches the plan's Site Name exactly, and a divider slide is inserted once per distinct Market. No vendor photos are used, but "Map link" becomes a clickable Google Maps link built from each site's Location. This means the build can take a few minutes for large plans (one AI call plus one landmark lookup per site).
   </div>
 
   <div class="grid">
@@ -94,7 +94,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <!-- Template upload -->
     <div class="card">
       <div class="card-title">Deck template</div>
-      <div class="card-desc">The branded cover + site-page template (2 slides).</div>
+      <div class="card-desc">The branded cover, market-divider, and site-page template.</div>
       <div class="tpl-note" id="tplNote">
         <span class="ok" id="tplStatus">✓ Official template bundled — no upload needed</span>
         <span class="tpl-link" id="tplUseCustom" onclick="document.getElementById('tplIn').click()">use a custom template instead</span>
@@ -105,7 +105,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   <div class="card" style="margin-bottom:20px">
     <div class="card-title">Client &amp; campaign details</div>
-    <div class="card-desc">Used to fill the cover slide and personalize the "Why this Site" copy.</div>
+    <div class="card-desc">Used to fill the cover slide.</div>
     <div class="field-grid">
       <div class="field">
         <label for="clientName">Client name *</label>
