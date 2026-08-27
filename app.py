@@ -15,7 +15,7 @@ import requests
 from flask import Flask, request, jsonify, send_file, render_template
 import pandas as pd
 from pptx import Presentation
-from pptx.util import Inches
+from pptx.util import Inches, Pt
 from pptx.oxml.ns import qn
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.enum.text import MSO_AUTO_SIZE
@@ -1529,6 +1529,7 @@ def _ooh_fill_site_slide(slide, fields: dict, ai: dict, landmarks: list, maps_ur
         # it spill onto a second line, but an unbounded name still overflows.
         title = _ooh_clamp_text(fields.get('site_name_fallback', ''), 40)
         _ooh_set_shape_text(other_text_shapes[0], title)
+        _ooh_fit_title_font(other_text_shapes[0])
     value_candidates = other_text_shapes[1:]
 
     # Each label's value is whichever leftover shape sits between that label
@@ -1574,6 +1575,33 @@ def _ooh_fill_site_slide(slide, fields: dict, ai: dict, landmarks: list, maps_ur
     spt = slide.shapes._spTree
     for sh in placeholder_shapes:
         spt.remove(sh._element)  # no vendor photo available — leave blank
+
+
+def _ooh_fit_title_font(shape, baseline_chars: int = 16, base_font_pt: float = 49.0, min_font_pt: float = 20.0):
+    """Shrink the title run's font size for names longer than the template's
+    own "EVEREST DIGITAL"-length example.
+
+    This box's left edge is a large negative number by design (it's a wide,
+    horizontally-centered title area whose center sits left of the slide's
+    own center) — a real generated deck confirmed PowerPoint renders it at
+    the full 49pt regardless of text length rather than recalculating
+    normAutofit, so a title much longer than the ~16-character example spans
+    the box edge-to-edge unwrapped and bleeds past the slide's left edge
+    before it ever reaches the box's own boundary. Scale the font down
+    proportionally to text length, calibrated against that known-good
+    example, so longer titles keep the same total rendered width the
+    template was actually built for.
+    """
+    tf = shape.text_frame
+    if not tf.paragraphs or not tf.paragraphs[0].runs:
+        return
+    run = tf.paragraphs[0].runs[0]
+    text = run.text.strip()
+    if not text:
+        return
+    font_pt = base_font_pt * baseline_chars / len(text)
+    font_pt = max(min_font_pt, min(base_font_pt, font_pt))
+    run.font.size = Pt(font_pt)
 
 
 def _ooh_max_chars_for_box(shape, lines: float = 3.0, fallback_font_pt: float = 14.65) -> int:
