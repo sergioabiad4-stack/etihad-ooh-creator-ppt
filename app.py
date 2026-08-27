@@ -1232,9 +1232,9 @@ def _ooh_format_site_fields(site: dict) -> dict:
         'sov':           site['sov_loop'],
         'traffic':       impacts_fmt,
         # Fallbacks used only if AI content is unavailable (no API key, or the call failed).
-        # Kept short since this fills a large single-line title font (a longer
-        # string wraps and overlaps the subtitle below it).
-        'site_name_fallback':   site['site_name'][:24],
+        # Left un-truncated here — _ooh_clamp_text applies the actual word-boundary
+        # cap where this is placed into the title box, instead of cutting mid-word.
+        'site_name_fallback':   site['site_name'],
         'location_fallback':    site['location'],
         'visibility_fallback':  visibility_fallback,
         'audience_fallback':    impacts_fmt,
@@ -1259,12 +1259,14 @@ Site details:
 
 The site's title on the slide is always "{site['site_name']}" verbatim from the plan — do not rename or paraphrase it.
 
+Each description fills a small fixed-size text box on the slide, so brevity is essential: write EXACTLY 1 short sentence per field, under 140 characters including spaces. Do not pad with a second sentence.
+
 Return ONLY valid JSON (no markdown fences, no extra text) with exactly these keys:
 
 {{
-  "location_desc": "<2-3 sentences describing where this site is located and its surroundings>",
-  "visibility_desc": "<2-3 sentences about the screen's visibility, format, and viewing conditions>",
-  "audience_desc": "<2-3 sentences about the audience/traffic this site reaches>"
+  "location_desc": "<1 short sentence, under 140 characters, describing where this site is located and its surroundings>",
+  "visibility_desc": "<1 short sentence, under 140 characters, about the screen's visibility, format, and viewing conditions>",
+  "audience_desc": "<1 short sentence, under 140 characters, about the audience/traffic this site reaches>"
 }}"""
 
     response = ai_client.messages.create(
@@ -1522,9 +1524,10 @@ def _ooh_fill_site_slide(slide, fields: dict, ai: dict, landmarks: list, maps_ur
     other_text_shapes.sort(key=lambda sh: sh.top)
     if other_text_shapes:
         # Always the raw Excel Site Name (not an AI paraphrase) so the slide
-        # title matches the plan exactly. Capped since this is a large
-        # single-line title font that would otherwise wrap.
-        title = fields.get('site_name_fallback', '')[:24]
+        # title matches the plan exactly. Clamped at a word boundary since
+        # this is a large title font in a fixed-width box — word_wrap lets
+        # it spill onto a second line, but an unbounded name still overflows.
+        title = _ooh_clamp_text(fields.get('site_name_fallback', ''), 40)
         _ooh_set_shape_text(other_text_shapes[0], title)
     value_candidates = other_text_shapes[1:]
 
@@ -1533,10 +1536,13 @@ def _ooh_fill_site_slide(slide, fields: dict, ai: dict, landmarks: list, maps_ur
     # labels first and all 3 values after, in document order, rather than
     # interleaving them as label/value pairs.
     label_shapes.sort(key=lambda item: item[1].top)
+    # Clamped to the narrowest of the three value boxes' capacity at their
+    # design font size (~200 chars) — a hard safety net independent of
+    # whatever length the AI actually returns.
     ai_by_label = {
-        'LOCATION':   ai.get('location_desc') or fields.get('location_fallback', ''),
-        'VISIBILITY': ai.get('visibility_desc') or fields.get('visibility_fallback', ''),
-        'AUDIENCE':   ai.get('audience_desc') or fields.get('audience_fallback', ''),
+        'LOCATION':   _ooh_clamp_text(ai.get('location_desc') or fields.get('location_fallback', ''), 200),
+        'VISIBILITY': _ooh_clamp_text(ai.get('visibility_desc') or fields.get('visibility_fallback', ''), 200),
+        'AUDIENCE':   _ooh_clamp_text(ai.get('audience_desc') or fields.get('audience_fallback', ''), 200),
     }
     for i, (label_text, label_sh) in enumerate(label_shapes):
         lower_bound = label_sh.top
@@ -1557,6 +1563,21 @@ def _ooh_fill_site_slide(slide, fields: dict, ai: dict, landmarks: list, maps_ur
     spt = slide.shapes._spTree
     for sh in placeholder_shapes:
         spt.remove(sh._element)  # no vendor photo available — leave blank
+
+
+def _ooh_clamp_text(text: str, max_chars: int) -> str:
+    """Truncate at the last word boundary within max_chars, appending '…'.
+
+    Applied as a hard safety net on top of the AI length instructions —
+    the model doesn't always obey a character budget, and these boxes have
+    no scroll/overflow affordance, so a deterministic clamp is what
+    actually prevents the text from bleeding into neighboring shapes.
+    """
+    text = (text or '').strip()
+    if len(text) <= max_chars:
+        return text
+    truncated = text[:max_chars].rsplit(' ', 1)[0].rstrip('.,;: ')
+    return f"{truncated}…"
 
 
 def _ooh_fill_divider_slide(slide, market: str):
